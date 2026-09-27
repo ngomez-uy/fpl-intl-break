@@ -342,6 +342,10 @@ h1 {
   color: var(--amber);
 }
 
+.agree {
+  color: var(--green);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

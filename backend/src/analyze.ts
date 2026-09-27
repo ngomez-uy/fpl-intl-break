@@ -9,6 +9,7 @@ import {
   type FplElement,
 } from "./fpl.js";
 import { mapPlayer, type PlayerMapping } from "./mapping.js";
+import { transfermarktCallUp } from "./transfermarkt.js";
 import {
   breakFixtures,
   combineChecks,
@@ -114,11 +115,11 @@ const SOURCES: Omit<DataSource, "oldestDataAt">[] = [
     status: "live",
   },
   {
-    id: "crosscheck",
-    name: "Independent call-up cross-check",
-    url: "",
-    usedFor: ["Second opinion on call-ups and withdrawals from a specialist international-football site"],
-    status: "planned",
+    id: "transfermarkt",
+    name: "Transfermarkt",
+    url: "https://www.transfermarkt.com",
+    usedFor: ["Independent check of call-ups: current national-team squads, with withdrawn players removed"],
+    status: "live",
   },
 ];
 
@@ -211,7 +212,10 @@ async function buildReportData(
             base.nationalTeam = nation.name;
             base.breakFixtures = breakFixtures(team, window).map((f) => withInvolvement(f, base.matches));
             const appearedVs = base.matches.filter((m) => m.team === team.name && (m.played || m.onBench)).map((m) => m.opponent);
-            base.callUp = combineChecks([fotmobCallUp(player, team, spellEnded, appearedVs, window)]);
+            base.callUp = combineChecks([
+              fotmobCallUp(player, team, spellEnded, appearedVs, window),
+              await transfermarktCallUp(nation.name, el, club, base.fotmob.fotmobName ?? player.name),
+            ]);
           }
           const inj = player.injuryInformation;
           if (inj) {
@@ -341,7 +345,12 @@ function assess(p: PlayerReport, el: FplElement, window: BreakWindow): PlayerRep
     signals.push({ source: "fotmob", severity: "medium", text: why });
   }
   if (p.callUp.agreement === "conflict") {
-    signals.push({ source: "fotmob", severity: "medium", text: "Sources disagree on the call-up — see the source checks" });
+    const tm = p.callUp.checks.find((c) => c.source === "Transfermarkt");
+    signals.push({
+      source: "fotmob",
+      severity: "medium",
+      text: `FotMob and Transfermarkt disagree on the call-up${tm ? ` (Transfermarkt: ${tm.detail.replace("Transfermarkt's ", "")})` : ""} — check the latest squad news`,
+    });
   }
 
   p.confirmedByBoth = fotmobInjuryFlag && fplFlag;

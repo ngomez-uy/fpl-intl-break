@@ -20,12 +20,14 @@ function release() {
   queue.shift()?.();
 }
 
-export async function getJson<T>(url: string): Promise<T> {
+export const getJson = async <T>(url: string): Promise<T> => JSON.parse(await getText(url, "application/json")) as T;
+
+export async function getText(url: string, accept = "text/html"): Promise<string> {
   await acquire();
   try {
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
-      if (res.ok) return (await res.json()) as T;
+      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: accept, "Accept-Language": "en" } });
+      if (res.ok) return await res.text();
       if (attempt >= 3 || (res.status < 500 && res.status !== 429)) {
         throw new Error(`GET ${url} -> ${res.status}`);
       }

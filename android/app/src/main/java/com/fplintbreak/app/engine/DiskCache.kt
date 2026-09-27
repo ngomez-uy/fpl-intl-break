@@ -30,7 +30,7 @@ class DataAges {
     operator fun get(source: String): Long? = oldest[source]
 
     private companion object {
-        const val VOLATILE_TTL_MS = HOUR
+        const val VOLATILE_TTL_MS = 3 * HOUR // covers the 3-hour Transfermarkt squads, not 6-hour FPL fixtures
     }
 }
 

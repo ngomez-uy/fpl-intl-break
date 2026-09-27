@@ -105,15 +105,22 @@ export function fotmobCallUp(
     const how = appearedIn.length > 0 ? `in the matchday squad vs ${appearedIn.join(", ")}` : `listed in the ${team.name} squad`;
     return { ...base, status: "called", detail: `Called up — ${how}` };
   }
+  if (spellEnded !== null) {
+    return { ...base, status: "not_called", detail: `No longer in the ${team.name} set-up — FotMob ended the spell on ${fmtDay(spellEnded)}` };
+  }
   return { ...base, status: "not_called", detail: `Not in the current ${team.name} squad` };
 }
+
+// "Withdrawn" and "not called" both mean "not with the squad now"; a source that drops
+// withdrawn players (Transfermarkt) reports them as simply not in the squad.
+const withSquad = (s: CallUpStatus) => s === "called";
 
 export function combineChecks(checks: SourceCheck[]): CallUp {
   const known = checks.filter((c) => c.status !== "unknown");
   if (known.length === 0) return { status: "unknown", checks, agreement: "single" };
-  const agree = known.every((c) => c.status === known[0].status);
+  const agree = known.every((c) => withSquad(c.status) === withSquad(known[0].status));
   return {
-    // Until more sources are in, FotMob's is the headline answer; conflicts are flagged, not hidden.
+    // FotMob's is the headline answer (it knows withdrawals); conflicts are flagged, not hidden.
     status: known[0].status,
     checks,
     agreement: known.length === 1 ? "single" : agree ? "agree" : "conflict",

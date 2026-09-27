@@ -30,7 +30,7 @@ private val CLUB_ALIASES = mapOf(
 
 private val DIACRITICS = Regex("\\p{Mn}+")
 
-private fun normalize(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD)
+internal fun normalize(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD)
     .replace(DIACRITICS, "")
     .lowercase()
     .replace("&", " ")
@@ -38,7 +38,7 @@ private fun normalize(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD)
     .replace(Regex("\\s+"), " ")
     .trim()
 
-private fun sameClub(fplTeam: FplTeam, fotmobTeamName: String?): Boolean {
+internal fun sameClub(fplTeam: FplTeam, fotmobTeamName: String?): Boolean {
     if (fotmobTeamName == null) return false
     val a = normalize(CLUB_ALIASES[normalize(fplTeam.name)] ?: fplTeam.name)
     val b = normalize(fotmobTeamName)

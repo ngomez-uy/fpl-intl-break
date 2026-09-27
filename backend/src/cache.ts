@@ -18,7 +18,7 @@ function fileFor(key: string) {
 // report can say how fresh its data is. Long-lived entries (finished matches, search
 // results) don't go stale in a way that matters, so only short-lived ones count.
 const oldestBySource = new AsyncLocalStorage<Map<string, number>>();
-const VOLATILE_TTL_MS = 3_600_000;
+const VOLATILE_TTL_MS = 3 * 3_600_000; // covers the 3-hour Transfermarkt squads, not 6-hour FPL fixtures
 
 function noteAge(key: string, entry: Entry<unknown>) {
   const ages = oldestBySource.getStore();

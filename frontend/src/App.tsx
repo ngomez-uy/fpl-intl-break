@@ -159,7 +159,7 @@ export default function App() {
           <Sources sources={report.sources} generatedAt={report.generatedAt} />
 
           <footer className="muted small">
-            Squad from GW{report.team.picksFromEvent} picks. Report built{' '}
+            Squad from GW{report.team.picksFromEvent} picks. Call-ups cross-checked between FotMob and Transfermarkt. Report built{' '}
             {new Date(report.generatedAt).toLocaleString('en-GB')}.
           </footer>
         </main>
@@ -252,8 +252,8 @@ function Sources({ sources, generatedAt }: { sources: DataSource[]; generatedAt:
         ))}
       </ul>
       <p className="muted small">
-        FotMob and FPL data is cached for 10–60 minutes to stay within their fair use, so a new withdrawal can take up to
-        an hour to show.
+        FPL, FotMob and Transfermarkt data is cached for 10 minutes to 3 hours to stay within their fair use, so a new
+        withdrawal can take a few hours to show.
       </p>
     </section>
   )
@@ -413,8 +413,12 @@ function PlayerDetails({ id, player: p }: { id: string; player: PlayerReport }) 
           ))}
           {p.callUp.checks.length === 0 && <li className="muted small">No source could place this player.</li>}
         </ul>
+        {p.callUp.agreement === 'agree' && <p className="agree small">✓ Sources agree</p>}
+        {p.callUp.agreement === 'conflict' && (
+          <p className="conflict small">⚠ Sources disagree — check the latest squad news before your transfers.</p>
+        )}
         {p.callUp.agreement === 'single' && p.callUp.checks.length > 0 && (
-          <p className="muted small">Cross-check sources are coming next.</p>
+          <p className="muted small">Only one source could check this player.</p>
         )}
 
         {p.signals.length > 0 && (

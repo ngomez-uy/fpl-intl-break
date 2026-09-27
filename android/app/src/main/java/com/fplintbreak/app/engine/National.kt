@@ -84,14 +84,24 @@ internal fun fotmobCallUp(
             val how = if (appearedVs.isNotEmpty()) "in the matchday squad vs ${appearedVs.joinToString(", ")}" else "listed in the ${team.name} squad"
             SourceCheck("FotMob", CallUpStatus.CALLED, "Called up — $how", url)
         }
+        spellEnded != null -> SourceCheck(
+            "FotMob",
+            CallUpStatus.NOT_CALLED,
+            "No longer in the ${team.name} set-up — FotMob ended the spell on ${fmtDate(spellEnded)}",
+            url,
+        )
         else -> SourceCheck("FotMob", CallUpStatus.NOT_CALLED, "Not in the current ${team.name} squad", url)
     }
 }
 
+// "Withdrawn" and "not called" both mean "not with the squad now"; a source that drops
+// withdrawn players (Transfermarkt) reports them as simply not in the squad.
+private fun withSquad(s: CallUpStatus) = s == CallUpStatus.CALLED
+
 internal fun combineChecks(checks: List<SourceCheck>): CallUp {
     val known = checks.filter { it.status != CallUpStatus.UNKNOWN }
     if (known.isEmpty()) return CallUp(CallUpStatus.UNKNOWN, checks, "single")
-    val agree = known.all { it.status == known[0].status }
-    // Until more sources are in, FotMob's is the headline answer; conflicts are flagged, not hidden.
+    val agree = known.all { withSquad(it.status) == withSquad(known[0].status) }
+    // FotMob's is the headline answer (it knows withdrawals); conflicts are flagged, not hidden.
     return CallUp(known[0].status, checks, if (known.size == 1) "single" else if (agree) "agree" else "conflict")
 }

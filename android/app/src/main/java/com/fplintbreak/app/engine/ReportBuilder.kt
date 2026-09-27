@@ -65,11 +65,11 @@ private val SOURCES = listOf(
         status = "live",
     ),
     DataSource(
-        id = "crosscheck",
-        name = "Independent call-up cross-check",
-        url = "",
-        usedFor = listOf("Second opinion on call-ups and withdrawals from a specialist international-football site"),
-        status = "planned",
+        id = "transfermarkt",
+        name = "Transfermarkt",
+        url = "https://www.transfermarkt.com",
+        usedFor = listOf("Independent check of call-ups: current national-team squads, with withdrawn players removed"),
+        status = "live",
     ),
 )
 
@@ -93,7 +93,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         val ages = DataAges()
         val f = Fetcher(http, cache, ages)
         val report = try {
-            buildData(teamId, Fpl(f), FotMob(f))
+            buildData(teamId, Fpl(f), FotMob(f), Transfermarkt(f))
         } catch (e: HttpException) {
             throw ReportException(if (e.status == 404) "FPL team $teamId not found" else "A data source failed (${e.status}). Try again in a bit.")
         } catch (e: IOException) {
@@ -103,7 +103,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         return report.copy(sources = sources)
     }
 
-    private suspend fun buildData(teamId: Int, fpl: Fpl, fotmob: FotMob): TeamReport = coroutineScope {
+    private suspend fun buildData(teamId: Int, fpl: Fpl, fotmob: FotMob, tm: Transfermarkt): TeamReport = coroutineScope {
         val bootstrapJob = async { fpl.bootstrap() }
         val entryJob = async { fpl.entry(teamId) }
         val window = fpl.findBreakWindow() ?: throw ReportException("No international break found yet this season.")
@@ -123,7 +123,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
             async {
                 val el = elements.getValue(pick.element)
                 val club = teams.getValue(el.team)
-                playerReport(pick, el, club, positions[el.elementType].orEmpty(), window, fotmob, mapping)
+                playerReport(pick, el, club, positions[el.elementType].orEmpty(), window, fotmob, tm, mapping)
             }
         }.awaitAll().sortedBy { it.pickPosition } // FPL squad order: XI from GK forwards, then bench
 
@@ -142,6 +142,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         position: String,
         window: BreakWindow,
         fotmob: FotMob,
+        tm: Transfermarkt,
         mapping: Mapping,
     ): PlayerReport {
         val w = Working()
@@ -159,7 +160,12 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
                     w.nationalTeam = nation.name
                     w.fixtures = breakFixtures(team, window).map { withInvolvement(it, w.matches) }
                     val appearedVs = w.matches.filter { it.team == team.name && (it.played || it.onBench) }.map { it.opponent }
-                    w.callUp = combineChecks(listOf(fotmobCallUp(player, team, spellEnded, appearedVs, window)))
+                    w.callUp = combineChecks(
+                        listOf(
+                            fotmobCallUp(player, team, spellEnded, appearedVs, window),
+                            tm.callUp(nation.name, el, club, w.mapping.fotmobName ?: player.name),
+                        ),
+                    )
                 }
                 w.injury = player.injuryInformation
             }
@@ -317,7 +323,10 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
             signals += Signal("fotmob", Severity.MEDIUM, why)
         }
         if (w.callUp.agreement == "conflict") {
-            signals += Signal("fotmob", Severity.MEDIUM, "Sources disagree on the call-up — see the source checks")
+            val tmDetail = w.callUp.checks.find { it.source == "Transfermarkt" }?.detail
+                ?.replace("Transfermarkt's ", "")
+            val why = tmDetail?.let { " (Transfermarkt: $it)" }.orEmpty()
+            signals += Signal("fotmob", Severity.MEDIUM, "FotMob and Transfermarkt disagree on the call-up$why — check the latest squad news")
         }
 
         if (fotmobInjuryFlag && !fplFlag) {

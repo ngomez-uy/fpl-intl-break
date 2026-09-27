@@ -22,13 +22,14 @@ class Http {
     // Keep request bursts small: these are free, unofficial endpoints.
     private val permits = Semaphore(MAX_CONCURRENT)
 
-    suspend fun getText(url: String): String = permits.withPermit { fetchWithRetry(url) }
+    suspend fun getText(url: String, accept: String = "application/json"): String =
+        permits.withPermit { fetchWithRetry(url, accept) }
 
-    private suspend fun fetchWithRetry(url: String): String {
+    private suspend fun fetchWithRetry(url: String, accept: String): String {
         var attempt = 1
         while (true) {
             val (code, body) = withContext(Dispatchers.IO) {
-                val request = Request.Builder().url(url).header("User-Agent", UA).header("Accept", "application/json").build()
+                val request = Request.Builder().url(url).header("User-Agent", UA).header("Accept", accept).header("Accept-Language", "en").build()
                 client.newCall(request).execute().use { res ->
                     res.code to if (res.isSuccessful) res.body?.string().orEmpty() else null
                 }

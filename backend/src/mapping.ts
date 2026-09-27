@@ -24,7 +24,7 @@ const CLUB_ALIASES: Record<string, string> = {
   "sheffield utd": "sheffield united",
 };
 
-const normalize = (s: string) =>
+export const normalize = (s: string) =>
   s
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -34,7 +34,7 @@ const normalize = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-function sameClub(fplTeam: FplTeam, fotmobTeamName: string | undefined) {
+export function sameClub(fplTeam: FplTeam, fotmobTeamName: string | undefined) {
   if (!fotmobTeamName) return false;
   const a = normalize(CLUB_ALIASES[normalize(fplTeam.name)] ?? fplTeam.name);
   const b = normalize(fotmobTeamName);

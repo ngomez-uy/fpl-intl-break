@@ -280,7 +280,8 @@ private fun LazyListScope.report(report: TeamReport, onFixMatch: (PlayerReport) 
     item { SourcesSection(report.sources, report.generatedAt) }
     item {
         Text(
-            "Squad from GW${report.team.picksFromEvent} picks. Pull down to refresh.",
+            "Squad from GW${report.team.picksFromEvent} picks. Call-ups cross-checked between FotMob and Transfermarkt. " +
+                "Pull down to refresh.",
             style = MaterialTheme.typography.bodySmall,
             color = LocalStatusColors.current.muted,
             modifier = Modifier.padding(top = 16.dp),
@@ -566,8 +567,11 @@ private fun PlayerDetails(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
                 TextButton(onClick = { uri.openUri(url) }, contentPadding = PaddingValues(0.dp)) { Text("Open source", fontSize = 13.sp) }
             }
         }
-        if (p.callUp.agreement == "single" && p.callUp.checks.isNotEmpty()) {
-            Text("Cross-check sources are coming next.", color = c.muted, fontSize = 12.sp)
+        when {
+            p.callUp.agreement == "agree" -> Text("✓ Sources agree", color = c.green, fontSize = 13.sp)
+            p.callUp.agreement == "conflict" ->
+                Text("⚠ Sources disagree — check the latest squad news before your transfers.", color = c.amber, fontSize = 13.sp)
+            p.callUp.checks.isNotEmpty() -> Text("Only one source could check this player.", color = c.muted, fontSize = 12.sp)
         }
 
         if (p.signals.isNotEmpty()) {
@@ -702,7 +706,7 @@ private fun SourcesSection(sources: List<DataSource>, generatedAt: String) {
             }
         }
         Text(
-            "Fetched straight from FotMob and FPL by this phone, and cached on it for 10–60 minutes, " +
+            "Fetched straight from FPL, FotMob and Transfermarkt by this phone, and cached on it for 10 minutes to 3 hours, " +
                 "so a new withdrawal can take up to an hour to show.",
             color = c.muted,
             fontSize = 12.sp,
