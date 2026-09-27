@@ -8,6 +8,11 @@ Data comes from the public Fantasy Premier League API and FotMob's (unofficial) 
 call-ups cross-checked against Transfermarkt's current national-team squads. See
 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
 
+## Download (Android)
+
+Latest APK: [releases/BreakTracker-0.3.zip](releases/BreakTracker-0.3.zip). Unzip on the phone, open
+the `.apk`, and allow installs from that app when Android asks. Newer versions install over it.
+
 ## Parts
 
 | Folder | What | Run |
