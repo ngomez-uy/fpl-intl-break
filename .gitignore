@@ -27,3 +27,6 @@ android/.kotlin/
 .DS_Store
 .idea/
 .vscode/
+
+# Published release APKs are committed on purpose
+!releases/*.apk

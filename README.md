@@ -10,8 +10,12 @@ call-ups cross-checked against Transfermarkt's current national-team squads. See
 
 ## Download (Android)
 
-Latest APK: [releases/BreakTracker-0.3.zip](releases/BreakTracker-0.3.zip). Unzip on the phone, open
-the `.apk`, and allow installs from that app when Android asks. Newer versions install over it.
+Latest version 0.3: [releases/BreakTracker-0.3.apk](releases/BreakTracker-0.3.apk) (or the
+[.zip](releases/BreakTracker-0.3.zip)). On the phone, open the download link in a browser logged in to
+GitHub (the GitHub app can't download files), tap the `.apk`, and allow installs from that app when
+Android asks. Newer versions install over it.
+
+Direct link: `https://github.com/ngomez-uy/fpl-intl-break/raw/main/releases/BreakTracker-0.3.apk`
 
 ## Parts
 
