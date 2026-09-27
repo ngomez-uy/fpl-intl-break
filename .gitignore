@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+.env.*
+*.keystore
+*.jks
+keystore.properties
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Backend's cached FotMob/FPL responses (regenerated on demand)
+backend/cache/
+
+# Android
+android/.gradle/
+android/local.properties
+android/.idea/
+android/.kotlin/
+*.iml
+*.apk
+*.aab
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
