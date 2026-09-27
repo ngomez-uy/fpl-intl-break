@@ -4,12 +4,15 @@ import {
   findBreakWindow,
   getBootstrap,
   getEntry,
+  getFixtures,
   getPicks,
   type BreakWindow,
   type FplElement,
 } from "./fpl.js";
 import { mapPlayer, type PlayerMapping } from "./mapping.js";
 import { transfermarktCallUp } from "./transfermarkt.js";
+import { nextFixtures, price, rest, type NextFixture, type Price, type Rest } from "./club.js";
+import { liveMatch, type LiveMatch } from "./live.js";
 import {
   breakFixtures,
   combineChecks,
@@ -59,6 +62,7 @@ export type Involvement = "started" | "sub" | "bench" | "absent" | "upcoming";
 export interface BreakMatch extends BreakFixture {
   involvement: Involvement;
   minutes: number | null;
+  live: boolean;
 }
 
 export interface PlayerReport {
@@ -77,6 +81,10 @@ export interface PlayerReport {
   callUp: CallUp;
   breakFixtures: BreakMatch[];
   matches: IntlMatch[];
+  nextFixtures: NextFixture[];
+  price: Price;
+  rest: Rest;
+  live: LiveMatch | null;
   fpl: { status: string; news: string; newsAdded: string | null; chance: number | null };
   fotmobInjury: { name: string; expectedReturn: string | null; lastUpdated: string | null } | null;
   signals: Signal[];
@@ -159,7 +167,12 @@ async function buildReportData(
   teamId: number,
   override?: Partial<BreakWindow>,
 ): Promise<Omit<TeamReport, "sources">> {
-  const [bootstrap, entry, detected] = await Promise.all([getBootstrap(), getEntry(teamId), findBreakWindow()]);
+  const [bootstrap, entry, detected, fixtures] = await Promise.all([
+    getBootstrap(),
+    getEntry(teamId),
+    findBreakWindow(),
+    getFixtures(),
+  ]);
   if (!detected && !(override?.from && override?.to)) {
     throw new Error("No international break found yet this season.");
   }
@@ -193,6 +206,10 @@ async function buildReportData(
         callUp: { status: "unknown", checks: [], agreement: "single" },
         breakFixtures: [],
         matches: [],
+        nextFixtures: nextFixtures(fixtures, club, window.beforeEvent, teams),
+        price: price(el),
+        rest: { level: "n/a", lastIntlMatch: null, clubKickoff: null, restDays: null, breakMinutes: 0, longTrip: null, note: "" },
+        live: null,
         fpl: { status: el.status, news: el.news, newsAdded: el.news_added, chance: el.chance_of_playing_next_round },
         fotmobInjury: null,
         signals: [],
@@ -210,12 +227,18 @@ async function buildReportData(
             const team = await getTeam(nation.fotmobTeamId);
             base.nation = nation;
             base.nationalTeam = nation.name;
-            base.breakFixtures = breakFixtures(team, window).map((f) => withInvolvement(f, base.matches));
+            const fixturesInBreak = breakFixtures(team, window);
+            base.breakFixtures = fixturesInBreak.map((f) => withInvolvement(f, base.matches));
             const appearedVs = base.matches.filter((m) => m.team === team.name && (m.played || m.onBench)).map((m) => m.opponent);
             base.callUp = combineChecks([
               fotmobCallUp(player, team, spellEnded, appearedVs, window),
               await transfermarktCallUp(nation.name, el, club, base.fotmob.fotmobName ?? player.name),
             ]);
+            if (base.callUp.status === "called") {
+              base.live = await liveMatch(fixturesInBreak, player.id);
+              const liveId = base.live?.fotmobMatchId;
+              base.breakFixtures = base.breakFixtures.map((f) => ({ ...f, live: f.fotmobMatchId === liveId }));
+            }
           }
           const inj = player.injuryInformation;
           if (inj) {
@@ -229,6 +252,17 @@ async function buildReportData(
       } catch (err) {
         base.error = (err as Error).message;
       }
+      base.rest = rest({
+        withSquad: base.callUp.status === "called",
+        fixtures: base.breakFixtures.map((f) => ({
+          date: f.date,
+          finished: f.finished,
+          involved: ["started", "sub", "bench"].includes(f.involvement),
+          competition: f.competition,
+        })),
+        breakMinutes: base.breakFixtures.reduce((sum, f) => sum + (f.minutes ?? 0), 0),
+        clubKickoff: base.nextFixtures[0]?.kickoff ?? null,
+      });
       return assess(base, el, window);
     }),
   );
@@ -257,7 +291,7 @@ function withInvolvement(f: BreakFixture, matches: IntlMatch[]): BreakMatch {
     else if (m.played) involvement = m.started ? "started" : "sub";
     else involvement = m.onBench ? "bench" : "absent";
   }
-  return { ...f, involvement, minutes: m?.played ? m.minutes : null };
+  return { ...f, involvement, minutes: m?.played ? m.minutes : null, live: false };
 }
 
 async function internationalMatches(player: PlayerData, window: BreakWindow): Promise<IntlMatch[]> {

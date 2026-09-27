@@ -8,7 +8,14 @@ import com.fplintbreak.app.data.DataSource
 import com.fplintbreak.app.data.FotmobLink
 import com.fplintbreak.app.data.IntlMatch
 import com.fplintbreak.app.data.Involvement
+import com.fplintbreak.app.data.FlaggedPlayer
+import com.fplintbreak.app.data.LeagueOption
+import com.fplintbreak.app.data.LeagueReport
+import com.fplintbreak.app.data.LiveMatch
+import com.fplintbreak.app.data.RestLevel
+import com.fplintbreak.app.data.RivalImpact
 import com.fplintbreak.app.data.Nation
+import com.fplintbreak.app.data.NextFixture
 import com.fplintbreak.app.data.PlayerCandidate
 import com.fplintbreak.app.data.PlayerReport
 import com.fplintbreak.app.data.Risk
@@ -20,6 +27,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlin.math.roundToInt
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -89,6 +99,101 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         throw ReportException("Search failed. Check your connection and try again.")
     }
 
+    /** The user's private mini-leagues. Public ones (Overall, country, club) are far too big to compare. */
+    suspend fun teamLeagues(teamId: Int): List<LeagueOption> = wrapErrors(teamId) {
+        Fpl(Fetcher(http, cache, DataAges())).entry(teamId).leagues?.classic.orEmpty()
+            .filter { it.leagueType == "x" }
+            .map { LeagueOption(it.id, it.name) }
+    }
+
+    /** Mini-league break impact: which rivals the break hit hardest. Port of backend/src/league.ts. */
+    suspend fun leagueReport(leagueId: Int, you: Int, limit: Int): LeagueReport {
+        val standings = wrapErrors(null) { Fpl(Fetcher(http, cache, DataAges())).league(leagueId) }
+        val picked = standings.standings.results.take(limit).toMutableList()
+        standings.standings.results.find { it.entry == you }?.let { if (it !in picked) picked += it }
+
+        // Rivals share many players, so later reports mostly hit the cache. Keep bursts small anyway.
+        val permits = Semaphore(3)
+        val rivals = coroutineScope {
+            picked.map { r ->
+                async {
+                    permits.withPermit {
+                        try {
+                            summarise(r, you, build(r.entry))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            RivalImpact(r.entry, r.entryName, r.playerName, r.rank, r.entry == you, 0.0, 0, 0, 0, 0, 0, emptyList(), e.message)
+                        }
+                    }
+                }
+            }.awaitAll()
+        }.sortedWith(compareByDescending<RivalImpact> { it.score }.thenBy { it.rank })
+        return LeagueReport(standings.league.name, Instant.now().toString(), rivals, limit)
+    }
+
+    private fun summarise(r: Standing, you: Int, report: TeamReport): RivalImpact {
+        val ps = report.players
+        val score = ps.sumOf { damage(it) }
+        return RivalImpact(
+            entry = r.entry,
+            teamName = report.team.name,
+            manager = report.team.manager,
+            rank = r.rank,
+            isYou = r.entry == you,
+            score = (score * 10).roundToInt() / 10.0,
+            injured = ps.count { it.risk == Risk.RED },
+            watch = ps.count { it.risk == Risk.AMBER },
+            withdrew = ps.count { it.callUp.status == CallUpStatus.WITHDRAWN },
+            tightRest = ps.count { it.rest.level == RestLevel.TIGHT },
+            away = ps.count { it.callUp.status == CallUpStatus.CALLED },
+            flagged = ps.mapNotNull { p -> flagReason(p)?.let { FlaggedPlayer(p.webName, it, p.isBench) } },
+        )
+    }
+
+    // Starters matter more than the bench; injuries matter more than tiredness.
+    private fun damage(p: PlayerReport): Double {
+        var points = when (p.risk) {
+            Risk.RED -> 3.0
+            Risk.AMBER -> 1.5
+            Risk.GREEN -> 0.0
+        }
+        points += when (p.rest.level) {
+            RestLevel.TIGHT -> 1.0
+            RestLevel.WATCH -> 0.5
+            else -> 0.0
+        }
+        return if (p.isBench) points / 2 else points
+    }
+
+    private fun flagReason(p: PlayerReport): String? = when {
+        p.callUp.status == CallUpStatus.WITHDRAWN -> "withdrew"
+        p.risk == Risk.RED -> "injury concern"
+        p.risk == Risk.AMBER -> when {
+            p.callUp.agreement == "conflict" -> "call-up unclear"
+            p.hasFotmobInjury -> "existing injury"
+            p.fplStatus != "a" -> p.fplChance?.let { "FPL $it%" } ?: "FPL flag"
+            p.matches.any { it.started && (it.subbedOffMinute ?: 99) < 60 } -> "subbed off early"
+            else -> "keep an eye"
+        }
+        p.rest.level == RestLevel.TIGHT -> "${p.rest.restDays}d rest"
+        else -> null
+    }
+
+    private suspend fun <T> wrapErrors(teamId: Int?, block: suspend () -> T): T = try {
+        block()
+    } catch (e: HttpException) {
+        throw ReportException(
+            when {
+                e.status == 404 && teamId != null -> "FPL team $teamId not found"
+                e.status == 404 -> "League not found"
+                else -> "A data source failed (${e.status}). Try again in a bit."
+            },
+        )
+    } catch (e: IOException) {
+        throw ReportException("No connection. Check your internet and try again.")
+    }
+
     suspend fun build(teamId: Int): TeamReport {
         val ages = DataAges()
         val f = Fetcher(http, cache, ages)
@@ -106,9 +211,11 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
     private suspend fun buildData(teamId: Int, fpl: Fpl, fotmob: FotMob, tm: Transfermarkt): TeamReport = coroutineScope {
         val bootstrapJob = async { fpl.bootstrap() }
         val entryJob = async { fpl.entry(teamId) }
+        val fixturesJob = async { fpl.fixtures() }
         val window = fpl.findBreakWindow() ?: throw ReportException("No international break found yet this season.")
         val bootstrap = bootstrapJob.await()
         val entry = entryJob.await()
+        val fixtures = fixturesJob.await()
 
         // Picks from the gameweek before the break: the squad as it went into the break.
         val picksEvent = minOf(window.afterEvent, entry.currentEvent)
@@ -123,7 +230,8 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
             async {
                 val el = elements.getValue(pick.element)
                 val club = teams.getValue(el.team)
-                playerReport(pick, el, club, positions[el.elementType].orEmpty(), window, fotmob, tm, mapping)
+                val next = nextFixtures(fixtures, club, window.beforeEvent, teams)
+                playerReport(pick, el, club, positions[el.elementType].orEmpty(), window, next, fotmob, tm, mapping)
             }
         }.awaitAll().sortedBy { it.pickPosition } // FPL squad order: XI from GK forwards, then bench
 
@@ -141,6 +249,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         club: FplTeam,
         position: String,
         window: BreakWindow,
+        next: List<NextFixture>,
         fotmob: FotMob,
         tm: Transfermarkt,
         mapping: Mapping,
@@ -158,7 +267,8 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
                     val team = fotmob.team(nation.fotmobTeamId)
                     w.nation = nation
                     w.nationalTeam = nation.name
-                    w.fixtures = breakFixtures(team, window).map { withInvolvement(it, w.matches) }
+                    val fixturesInBreak = breakFixtures(team, window)
+                    w.fixtures = fixturesInBreak.map { withInvolvement(it, w.matches) }
                     val appearedVs = w.matches.filter { it.team == team.name && (it.played || it.onBench) }.map { it.opponent }
                     w.callUp = combineChecks(
                         listOf(
@@ -166,6 +276,11 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
                             tm.callUp(nation.name, el, club, w.mapping.fotmobName ?: player.name),
                         ),
                     )
+                    if (w.callUp.status == CallUpStatus.CALLED) {
+                        w.live = liveMatch(fotmob, fixturesInBreak, player.id)
+                        val liveId = w.live?.fotmobMatchId
+                        w.fixtures = w.fixtures.map { it.copy(live = it.fotmobMatchId == liveId) }
+                    }
                 }
                 w.injury = player.injuryInformation
             }
@@ -176,6 +291,19 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
             w.error = e.message ?: e.javaClass.simpleName
         }
 
+        val restInfo = rest(
+            withSquad = w.callUp.status == CallUpStatus.CALLED,
+            fixtures = w.fixtures.map {
+                RestFixture(
+                    it.date,
+                    it.finished,
+                    it.involvement in setOf(Involvement.STARTED, Involvement.SUB, Involvement.BENCH),
+                    it.competition,
+                )
+            },
+            breakMinutes = w.fixtures.sumOf { it.minutes ?: 0 },
+            clubKickoff = next.firstOrNull()?.kickoff,
+        )
         val (signals, confirmedByBoth) = assess(w, el, window)
         val risk = when {
             signals.any { it.severity == Severity.HIGH } -> Risk.RED
@@ -198,6 +326,13 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
             callUp = w.callUp,
             breakFixtures = w.fixtures,
             matches = w.matches,
+            nextFixtures = next,
+            price = price(el),
+            rest = restInfo,
+            live = w.live,
+            fplStatus = el.status,
+            fplChance = el.chanceOfPlayingNextRound,
+            hasFotmobInjury = w.injury != null,
             signals = signals,
             risk = risk,
             confirmedByBoth = confirmedByBoth,
@@ -213,6 +348,7 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         var fixtures: List<BreakMatch> = emptyList()
         var callUp = CallUp(CallUpStatus.UNKNOWN, emptyList(), "single")
         var injury: InjuryInformation? = null
+        var live: LiveMatch? = null
         var error: String? = null
     }
 

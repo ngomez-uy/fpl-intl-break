@@ -97,7 +97,14 @@ interface LineupTeam {
 }
 
 export interface MatchDetails {
-  general: { finished: boolean };
+  general: { finished: boolean; started?: boolean };
+  header?: {
+    status?: {
+      scoreStr?: string;
+      liveTime?: { short?: string };
+      reason?: { short?: string };
+    };
+  };
   content: {
     matchFacts?: { events?: { events: SubEvent[] } };
     lineup?: { homeTeam?: LineupTeam; awayTeam?: LineupTeam };
@@ -146,11 +153,11 @@ export const getTeam = (id: number) =>
     };
   });
 
-// Finished matches never change, so cache them forever.
+// Finished matches never change, so cache them forever; live ones are re-checked every minute.
 export const getMatch = (id: number) =>
   cached(
     `fotmob_match_${id}`,
-    (m: MatchDetails) => (m.general?.finished ? null : 10 * MINUTE),
+    (m: MatchDetails) => (m.general?.finished ? null : m.general?.started ? MINUTE : 10 * MINUTE),
     () => getJson<MatchDetails>(`${BASE}/matchDetails?matchId=${id}`),
   );
 

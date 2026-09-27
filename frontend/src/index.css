@@ -206,6 +206,40 @@ h1 {
   color: inherit;
 }
 
+.stat-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.stats-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  min-width: 72px;
+}
+
+.rest-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.rest-summary .stats-label {
+  margin-right: 4px;
+}
+
+.rest-name.rest-tight {
+  color: var(--red);
+  font-weight: 600;
+}
+.rest-name.rest-watch {
+  color: var(--amber);
+  font-weight: 600;
+}
+
 .stats-divider {
   width: 1px;
   height: 18px;
@@ -224,7 +258,7 @@ h1 {
 /* ---------- Squad table ---------- */
 
 .squad {
-  --cols: minmax(150px, 1.6fr) minmax(90px, 1fr) 96px minmax(120px, 1.3fr) minmax(130px, 1.4fr) 140px;
+  --cols: minmax(170px, 1.8fr) 96px minmax(120px, 1.3fr) minmax(130px, 1.4fr) minmax(120px, 1.1fr) 140px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -306,8 +340,252 @@ h1 {
   align-items: center;
 }
 
-.cell-nation {
+.cell-back {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
   font-size: 14px;
+}
+
+.next-gw {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* FPL's fixture difficulty colours */
+.fdr {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.fdr-1 {
+  background: #257d5a;
+  color: #fff;
+}
+.fdr-2 {
+  background: #00ff86;
+  color: #1c1d21;
+}
+.fdr-3 {
+  background: #e7e7e7;
+  color: #1c1d21;
+}
+.fdr-4 {
+  background: #ff1751;
+  color: #fff;
+}
+.fdr-5 {
+  background: #80072d;
+  color: #fff;
+}
+
+.rest {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.rest-tight {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.rest-watch {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.rest-note.rest-tight {
+  color: var(--red);
+}
+.rest-note.rest-watch {
+  color: var(--amber);
+}
+
+/* Live now */
+.live-badge,
+.chip-live {
+  background: var(--red);
+  color: var(--surface);
+  border-color: transparent;
+  font-weight: 700;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.live-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-right: 8px;
+}
+.live-now {
+  margin-top: 6px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.live-detail {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-badge,
+  .chip-live {
+    animation: none;
+  }
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 14px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Mini-league */
+.league-controls {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.league-controls h2 {
+  font-size: 20px;
+}
+.league-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.league-form select,
+.league-form button {
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.league-form select:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+.league-form label:first-child {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+}
+.league-form label:first-child select {
+  width: 100%;
+}
+.league-form button {
+  font-weight: 600;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.league-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rivals h3 {
+  font-size: 16px;
+  margin: 0 0 10px;
+}
+.rivals ol {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.rivals li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+.rivals li:first-child {
+  border-top: 0;
+}
+.rivals li.you {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.rival-pos {
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.rival-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.rival-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.rival-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.flag {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.flag.bench {
+  opacity: 0.7;
+}
+.rival-score {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+.rival-score strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
 }
 
 .cell-callup {
@@ -668,7 +946,8 @@ footer {
     grid-template-columns: 1fr auto auto;
     grid-template-areas:
       'player callup status'
-      'played next next';
+      'played next next'
+      'back back back';
     row-gap: 8px;
   }
   .cell-player {
@@ -680,9 +959,6 @@ footer {
   .cell-status {
     grid-area: status;
   }
-  .cell-nation {
-    display: none;
-  }
   .cell-played {
     grid-area: played;
   }
@@ -690,6 +966,13 @@ footer {
     grid-area: next;
     justify-self: end;
     text-align: right;
+  }
+  .cell-back {
+    grid-area: back;
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: center;
+    gap: 8px;
   }
   .mobile-only {
     display: inline;

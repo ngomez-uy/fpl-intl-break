@@ -8,6 +8,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fplintbreak.app.data.Settings
 import com.fplintbreak.app.data.TeamReport
+import com.fplintbreak.app.data.LeagueOption
+import com.fplintbreak.app.data.LeagueReport
 import com.fplintbreak.app.data.PlayerCandidate
 import com.fplintbreak.app.data.PlayerReport
 import com.fplintbreak.app.engine.Overrides
@@ -18,7 +20,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val LIVE_REFRESH_MS = 90_000L
 
 /** The "wrong player? pick the right one" dialog for one FPL player. */
 data class MatchFix(
@@ -29,11 +35,24 @@ data class MatchFix(
     val error: String? = null,
 )
 
+enum class View { SQUAD, LEAGUE }
+
+data class LeagueUiState(
+    val options: List<LeagueOption>? = null,
+    val selectedId: Int? = null,
+    val limit: Int = 10,
+    val loading: Boolean = false,
+    val report: LeagueReport? = null,
+    val error: String? = null,
+)
+
 data class BreakUiState(
     val loading: Boolean = false,
     val report: TeamReport? = null,
     val error: String? = null,
     val matchFix: MatchFix? = null,
+    val view: View = View.SQUAD,
+    val league: LeagueUiState = LeagueUiState(),
 )
 
 class BreakViewModel(app: Application) : AndroidViewModel(app) {
@@ -55,6 +74,56 @@ class BreakViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onTeamIdChange(value: String) {
         teamId = value.filter(Char::isDigit)
+    }
+
+    // While a match is live, refresh this often (live match data is re-fetched every minute).
+    private fun scheduleLiveRefresh(report: TeamReport) {
+        liveRefresh?.cancel()
+        if (report.players.none { it.live != null }) return
+        liveRefresh = viewModelScope.launch {
+            delay(LIVE_REFRESH_MS)
+            load(quiet = true)
+        }
+    }
+
+    fun showView(view: View) {
+        _state.update { it.copy(view = view) }
+        if (view == View.LEAGUE && _state.value.league.options == null) loadLeagues()
+    }
+
+    private fun loadLeagues() {
+        val teamId = _state.value.report?.team?.id ?: return
+        viewModelScope.launch {
+            try {
+                val options = builder.teamLeagues(teamId)
+                val remembered = settings.leagueId
+                val selected = options.find { it.id == remembered }?.id ?: options.firstOrNull()?.id
+                _state.update { it.copy(league = it.league.copy(options = options, selectedId = selected)) }
+            } catch (e: ReportException) {
+                _state.update { it.copy(league = it.league.copy(options = emptyList(), error = e.message)) }
+            }
+        }
+    }
+
+    fun selectLeague(id: Int) = _state.update { it.copy(league = it.league.copy(selectedId = id)) }
+
+    fun selectLimit(limit: Int) = _state.update { it.copy(league = it.league.copy(limit = limit)) }
+
+    fun compareLeague() {
+        val s = _state.value
+        val leagueId = s.league.selectedId ?: return
+        val you = s.report?.team?.id ?: return
+        if (s.league.loading) return
+        _state.update { it.copy(league = it.league.copy(loading = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val report = builder.leagueReport(leagueId, you, s.league.limit)
+                settings.leagueId = leagueId
+                _state.update { it.copy(league = it.league.copy(loading = false, report = report)) }
+            } catch (e: ReportException) {
+                _state.update { it.copy(league = it.league.copy(loading = false, error = e.message)) }
+            }
+        }
     }
 
     fun openMatchFix(player: PlayerReport) {
@@ -99,19 +168,32 @@ class BreakViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeMatchFix() = _state.update { it.copy(matchFix = null) }
 
-    fun load() {
+    private var liveRefresh: Job? = null
+
+    fun load() = load(quiet = false)
+
+    /** `quiet` refreshes (while a match is live) keep the current report on screen and hide errors. */
+    private fun load(quiet: Boolean) {
         val id = teamId
         // FPL IDs are well under Int.MAX_VALUE; anything longer is a typo.
         if (id.isEmpty() || id.length > 9 || _state.value.loading) return
-        _state.update { it.copy(loading = true, error = null) }
+        if (!quiet) _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
                 val report = builder.build(id.toInt())
                 settings.teamId = id
-                _state.update { it.copy(loading = false, report = report) }
+                val newTeam = _state.value.report?.team?.id != report.team.id
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        report = report,
+                        league = if (newTeam) LeagueUiState() else it.league,
+                    )
+                }
+                scheduleLiveRefresh(report)
             } catch (e: ReportException) {
                 // Keep showing the last good report if a refresh fails.
-                _state.update { it.copy(loading = false, error = e.message) }
+                _state.update { it.copy(loading = false, error = if (quiet) it.error else e.message) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

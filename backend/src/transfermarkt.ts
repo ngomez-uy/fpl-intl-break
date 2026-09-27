@@ -37,6 +37,7 @@ const decode = (s: string) =>
     .replace(/&#0?39;|&apos;/g, "'")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, " ")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .trim();
 
@@ -59,7 +60,8 @@ const getSquad = (team: TmTeam) =>
     const players: TmPlayer[] = [];
     // One <tr class="odd|even"> per player; the nested position table's rows have no class.
     for (const row of page.split(/<tr class="(?:odd|even)">/).slice(1)) {
-      const link = row.match(/<td class="hauptlink">\s*<a href="\/[^/"]+\/profil\/spieler\/(\d+)">\s*([^<]+?)\s*<\/a>/);
+      // The name can be followed by icons inside the link (e.g. the captain's armband).
+      const link = row.match(/<td class="hauptlink">\s*<a href="\/[^/"]+\/profil\/spieler\/(\d+)">\s*([^<]+?)\s*(?:<span[\s\S]*?<\/span>\s*)*<\/a>/);
       if (!link) continue;
       const id = Number(link[1]);
       const club = row.match(/<a title="([^"]*)" href="\/[^"]+\/startseite\/verein\/\d+"/);

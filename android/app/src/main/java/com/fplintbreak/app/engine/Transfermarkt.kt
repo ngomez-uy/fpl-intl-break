@@ -32,13 +32,16 @@ private val KNOWN = mapOf(
 
 private val SEARCH_HIT = Regex("""<a title="([^"]+)" href="/([a-z0-9-]+)/startseite/verein/(\d+)"""")
 private val ROW_SPLIT = Regex("""<tr class="(?:odd|even)">""")
-private val PLAYER_LINK = Regex("""<td class="hauptlink">\s*<a href="/[^/"]+/profil/spieler/(\d+)">\s*([^<]+?)\s*</a>""")
+// The name can be followed by icons inside the link (e.g. the captain's armband).
+private val PLAYER_LINK =
+    Regex("""<td class="hauptlink">\s*<a href="/[^/"]+/profil/spieler/(\d+)">\s*([^<]+?)\s*(?:<span[\s\S]*?</span>\s*)*</a>""")
 private val CLUB_LINK = Regex("""<a title="([^"]*)" href="/[^"]+/startseite/verein/\d+"""")
 
 private fun decode(s: String) = s
     .replace(Regex("&#0?39;|&apos;"), "'")
     .replace("&amp;", "&")
     .replace("&quot;", "\"")
+    .replace("&nbsp;", " ")
     .replace(Regex("&#(\\d+);")) { it.groupValues[1].toInt().toChar().toString() }
     .trim()
 

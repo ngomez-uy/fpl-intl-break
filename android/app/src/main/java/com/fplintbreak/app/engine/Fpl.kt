@@ -20,6 +20,10 @@ internal data class FplElement(
     val news: String = "",
     @SerialName("news_added") val newsAdded: String? = null,
     @SerialName("chance_of_playing_next_round") val chanceOfPlayingNextRound: Int? = null,
+    @SerialName("now_cost") val nowCost: Int = 0, // tenths of £m
+    @SerialName("cost_change_event") val costChangeEvent: Int = 0,
+    @SerialName("transfers_in_event") val transfersInEvent: Int = 0,
+    @SerialName("transfers_out_event") val transfersOutEvent: Int = 0,
 )
 
 @Serializable
@@ -36,7 +40,15 @@ internal data class Bootstrap(
 )
 
 @Serializable
-internal data class FplFixture(val event: Int? = null, @SerialName("kickoff_time") val kickoffTime: String? = null)
+internal data class FplFixture(
+    val id: Int = 0,
+    val event: Int? = null,
+    @SerialName("kickoff_time") val kickoffTime: String? = null,
+    @SerialName("team_h") val teamH: Int = 0,
+    @SerialName("team_a") val teamA: Int = 0,
+    @SerialName("team_h_difficulty") val teamHDifficulty: Int = 3,
+    @SerialName("team_a_difficulty") val teamADifficulty: Int = 3,
+)
 
 @Serializable
 internal data class FplEntry(
@@ -45,6 +57,36 @@ internal data class FplEntry(
     @SerialName("player_first_name") val playerFirstName: String,
     @SerialName("player_last_name") val playerLastName: String,
     @SerialName("current_event") val currentEvent: Int,
+    val leagues: EntryLeagues? = null,
+)
+
+@Serializable
+internal data class EntryLeagues(val classic: List<EntryLeague> = emptyList())
+
+@Serializable
+internal data class EntryLeague(
+    val id: Int,
+    val name: String,
+    @SerialName("entry_rank") val entryRank: Int? = null,
+    @SerialName("league_type") val leagueType: String = "",
+)
+
+@Serializable
+internal data class LeagueStandings(val league: LeagueInfo, val standings: StandingsPage)
+
+@Serializable
+internal data class LeagueInfo(val id: Int, val name: String)
+
+@Serializable
+internal data class StandingsPage(val results: List<Standing> = emptyList())
+
+@Serializable
+internal data class Standing(
+    val entry: Int,
+    @SerialName("entry_name") val entryName: String,
+    @SerialName("player_name") val playerName: String,
+    val rank: Int,
+    val total: Int,
 )
 
 @Serializable
@@ -63,7 +105,7 @@ internal class Fpl(private val f: Fetcher) {
     suspend fun bootstrap(): Bootstrap =
         lenientJson.decodeFromString(f.cached("fpl_bootstrap", 15 * MINUTE, "$BASE/bootstrap-static/"))
 
-    private suspend fun fixtures(): List<FplFixture> =
+    suspend fun fixtures(): List<FplFixture> =
         lenientJson.decodeFromString(f.cached("fpl_fixtures", 6 * HOUR, "$BASE/fixtures/"))
 
     suspend fun entry(id: Int): FplEntry =
@@ -71,6 +113,10 @@ internal class Fpl(private val f: Fetcher) {
 
     suspend fun picks(id: Int, event: Int): FplPicks =
         lenientJson.decodeFromString(f.cached("fpl_picks_${id}_$event", 15 * MINUTE, "$BASE/entry/$id/event/$event/picks/"))
+
+    // Rivals' ranks only move at gameweek end, so an hour is plenty.
+    suspend fun league(id: Int): LeagueStandings =
+        lenientJson.decodeFromString(f.cached("fpl_league_$id", HOUR, "$BASE/leagues-classic/$id/standings/"))
 
     /**
      * The most recent gap of 9+ days between consecutive gameweeks that has already

@@ -15,6 +15,10 @@ export interface FplElement {
   news: string;
   news_added: string | null;
   chance_of_playing_next_round: number | null;
+  now_cost: number; // tenths of £m
+  cost_change_event: number;
+  transfers_in_event: number;
+  transfers_out_event: number;
 }
 
 export interface FplTeam {
@@ -37,9 +41,14 @@ interface Bootstrap {
   element_types: { id: number; singular_name_short: string }[];
 }
 
-interface FplFixture {
+export interface FplFixture {
+  id: number;
   event: number | null;
   kickoff_time: string | null;
+  team_h: number;
+  team_a: number;
+  team_h_difficulty: number;
+  team_a_difficulty: number;
 }
 
 export interface FplEntry {
@@ -48,6 +57,7 @@ export interface FplEntry {
   player_first_name: string;
   player_last_name: string;
   current_event: number;
+  leagues?: { classic?: { id: number; name: string; entry_rank: number | null; league_type: string }[] };
 }
 
 export interface FplPicks {
@@ -58,7 +68,7 @@ export interface FplPicks {
 export const getBootstrap = () =>
   cached("fpl_bootstrap", 15 * MINUTE, () => getJson<Bootstrap>(`${BASE}/bootstrap-static/`));
 
-const getFixtures = () => cached("fpl_fixtures", 6 * HOUR, () => getJson<FplFixture[]>(`${BASE}/fixtures/`));
+export const getFixtures = () => cached("fpl_fixtures", 6 * HOUR, () => getJson<FplFixture[]>(`${BASE}/fixtures/`));
 
 export const getEntry = (id: number) =>
   cached(`fpl_entry_${id}`, 15 * MINUTE, () => getJson<FplEntry>(`${BASE}/entry/${id}/`));
@@ -67,6 +77,15 @@ export const getPicks = (id: number, event: number) =>
   cached(`fpl_picks_${id}_${event}`, 15 * MINUTE, () =>
     getJson<FplPicks>(`${BASE}/entry/${id}/event/${event}/picks/`),
   );
+
+export interface LeagueStandings {
+  league: { id: number; name: string };
+  standings: { results: { entry: number; entry_name: string; player_name: string; rank: number; total: number }[] };
+}
+
+// Rivals' ranks only move at gameweek end, so an hour is plenty.
+export const getLeague = (id: number) =>
+  cached(`fpl_league_${id}`, HOUR, () => getJson<LeagueStandings>(`${BASE}/leagues-classic/${id}/standings/`));
 
 export interface BreakWindow {
   from: string; // just after the last match of the gameweek before the break

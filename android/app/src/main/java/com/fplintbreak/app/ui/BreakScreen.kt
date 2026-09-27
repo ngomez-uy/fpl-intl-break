@@ -1,6 +1,17 @@
 package com.fplintbreak.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.ui.draw.alpha
+import com.fplintbreak.app.data.OnPitch
+import com.fplintbreak.app.data.RestLevel
+import java.time.LocalDate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -84,7 +95,44 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK).withZone(ZoneId.systemDefault())
+private val timeFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.UK).withZone(ZoneId.systemDefault())
 private fun fmtDay(iso: String) = dayFormat.format(Instant.parse(iso))
+private fun fmtTime(iso: String) = timeFormat.format(Instant.parse(iso))
+
+/** "today 19:45", "tomorrow 17:00", or "Sat 3 Oct" further out (phone's local time). */
+private fun fmtWhen(iso: String): String {
+    val day = Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate()
+    val today = LocalDate.now()
+    return when (day) {
+        today -> "today ${fmtTime(iso)}"
+        today.plusDays(1) -> "tomorrow ${fmtTime(iso)}"
+        else -> fmtDay(iso)
+    }
+}
+
+/** Like fmtWhen, but always with the kick-off time. */
+private fun fmtWhenAt(iso: String) = fmtWhen(iso).let { if (':' in it) it else "$it ${fmtTime(iso)}" }
+
+private fun fmtDays(d: Double?) = d?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "?"
+
+private fun fmtThousands(n: Int) = (if (n > 0) "+" else if (n < 0) "−" else "") + "${kotlin.math.abs(n) / 1000}k"
+
+private fun onPitchLabel(o: OnPitch) = when (o) {
+    OnPitch.PLAYING -> "on the pitch"
+    OnPitch.SUBBED_OFF -> "subbed off"
+    OnPitch.BENCH -> "on the bench"
+    OnPitch.NOT_IN_SQUAD -> "not in the matchday squad"
+    OnPitch.UNKNOWN -> "line-ups not out yet"
+}
+
+// FPL's fixture difficulty colours.
+private fun fdrColors(d: Int) = when (d) {
+    1 -> Color(0xFF257D5A) to Color.White
+    2 -> Color(0xFF00FF86) to Color(0xFF1C1D21)
+    3 -> Color(0xFFE7E7E7) to Color(0xFF1C1D21)
+    4 -> Color(0xFFFF1751) to Color.White
+    else -> Color(0xFF80072D) to Color.White
+}
 
 private fun riskLabel(r: Risk) = when (r) {
     Risk.RED -> "Injury concern"
@@ -151,7 +199,15 @@ fun BreakScreen(vm: BreakViewModel = viewModel()) {
                         )
                     }
                 }
-                state.report?.let { report(it, vm::openMatchFix) }
+                state.report?.let { r ->
+                    item { ViewTabs(state.view, vm::showView) }
+                    when (state.view) {
+                        View.SQUAD -> report(r, vm::openMatchFix)
+                        View.LEAGUE -> item {
+                            LeagueSection(state.league, vm::selectLeague, vm::selectLimit, vm::compareLeague)
+                        }
+                    }
+                }
             }
         }
     }
@@ -230,6 +286,18 @@ private fun MatchFixDialog(
             }
         },
     )
+}
+
+@Composable
+private fun ViewTabs(current: View, onSelect: (View) -> Unit) {
+    TabRow(
+        selectedTabIndex = current.ordinal,
+        containerColor = MaterialTheme.colorScheme.background,
+        modifier = Modifier.padding(bottom = 16.dp),
+    ) {
+        Tab(selected = current == View.SQUAD, onClick = { onSelect(View.SQUAD) }, text = { Text("My squad") })
+        Tab(selected = current == View.LEAGUE, onClick = { onSelect(View.LEAGUE) }, text = { Text("Mini-league") })
+    }
 }
 
 @Composable
@@ -320,15 +388,27 @@ private fun Summary(report: TeamReport) {
                 Text("Break over — no national-team matches left for your players", style = MaterialTheme.typography.bodyMedium)
             }
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
+        val live = ps.filter { it.live != null }
+        if (live.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                LiveBadge("LIVE")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "${live.joinToString { it.webName }} ${if (live.size == 1) "is" else "are"} playing right now — refreshing automatically",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        // Each group covers all 15 players once, so its numbers add up to the squad.
+        StatsLabel("Call-ups")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val withdrew = ps.count { it.callUp.status == CallUpStatus.WITHDRAWN }
             Stat(away.size, "With national team")
             Stat(withdrew, "Withdrew", if (withdrew > 0) c.amber to c.amberBg else null)
             Stat(ps.count { it.callUp.status == CallUpStatus.NOT_CALLED || it.callUp.status == CallUpStatus.UNKNOWN }, "Not called up")
+        }
+        StatsLabel("Fitness")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Risk.entries.forEach { r ->
                 val n = ps.count { it.risk == r }
                 val tone = when (r) {
@@ -339,7 +419,85 @@ private fun Summary(report: TeamReport) {
                 Stat(n, riskLabel(r), if (n > 0) tone else null)
             }
         }
+        // Not a count: these players are a subset of the ones away, so name them instead.
+        StatsLabel("Rest before GW${report.window.beforeEvent}")
+        val tired = ps.filter { it.rest.level == RestLevel.TIGHT || it.rest.level == RestLevel.WATCH }
+            .sortedBy { it.rest.restDays ?: 99.0 }
+        if (tired.isEmpty()) {
+            Text("Everyone away gets 4+ days before their club game.", fontSize = 13.sp, color = c.muted)
+        } else {
+            Text(
+                tired.joinToString { p ->
+                    val extra = listOfNotNull(
+                        p.rest.longTrip?.let { "long trip" },
+                        p.rest.breakMinutes.takeIf { it >= 270 }?.let { "$it'" },
+                    )
+                    "${p.webName} (${fmtDays(p.rest.restDays)} days${extra.joinToString("") { ", $it" }})"
+                },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (tired.any { it.rest.level == RestLevel.TIGHT }) c.red else c.amber,
+            )
+        }
     }
+}
+
+@Composable
+private fun StatsLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp,
+        color = LocalStatusColors.current.muted,
+        modifier = Modifier.padding(top = 10.dp),
+    )
+}
+
+@Composable
+private fun LiveBadge(text: String) {
+    val c = LocalStatusColors.current
+    val pulse = rememberInfiniteTransition(label = "live")
+    val alpha by pulse.animateFloat(1f, 0.55f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "alpha")
+    Text(
+        text,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .alpha(alpha)
+            .background(c.red, RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun FdrChip(d: Int) {
+    val (bg, fg) = fdrColors(d)
+    Text(
+        "$d",
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        color = fg,
+        modifier = Modifier.background(bg, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+private fun RestChip(p: PlayerReport) {
+    val c = LocalStatusColors.current
+    val (fg, bg) = when (p.rest.level) {
+        RestLevel.TIGHT -> c.red to c.redBg
+        RestLevel.WATCH -> c.amber to c.amberBg
+        else -> c.muted to MaterialTheme.colorScheme.background
+    }
+    Text(
+        "${fmtDays(p.rest.restDays)}d rest${if (p.rest.longTrip != null) " ✈" else ""}",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = fg,
+        modifier = Modifier.background(bg, RoundedCornerShape(50)).padding(horizontal = 7.dp, vertical = 1.dp),
+    )
 }
 
 @Composable
@@ -425,14 +583,22 @@ private fun PlayerRow(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val done = p.played
                         Box(Modifier.weight(1f)) {
-                            if (done.isEmpty()) {
+                            if (done.isEmpty() && p.live == null) {
                                 Text("—", color = c.muted)
                             } else {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     done.forEach { InvolvementChip(it) }
-                                    val minutes = done.sumOf { it.minutes ?: 0 }
-                                    if (done.size > 1 && minutes > 0) {
-                                        Text("$minutes' total", color = c.muted, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                                    p.live?.let { LiveBadge("LIVE ${it.minute}") }
+                                    if (done.isNotEmpty()) {
+                                        // Minutes, then matches featured in out of matches played.
+                                        val minutes = done.sumOf { it.minutes ?: 0 }
+                                        val featured = done.count { it.involvement == Involvement.STARTED || it.involvement == Involvement.SUB }
+                                        Text(
+                                            "$minutes' · $featured/${done.size}",
+                                            color = c.muted,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.align(Alignment.CenterVertically),
+                                        )
                                     }
                                 }
                             }
@@ -442,7 +608,7 @@ private fun PlayerRow(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
                             Text("${next.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                "next ${fmtDay(next[0].date)} ${if (next[0].home) "v" else "@"} ${next[0].opponent}",
+                                "next ${fmtWhen(next[0].date)} ${if (next[0].home) "v" else "@"} ${next[0].opponent}",
                                 color = c.muted,
                                 fontSize = 13.sp,
                                 maxLines = 1,
@@ -451,6 +617,17 @@ private fun PlayerRow(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
                         } else {
                             Text("—", color = c.muted)
                         }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val f = p.nextFixtures.firstOrNull()
+                        if (f == null) {
+                            Text("No GW fixture", color = c.muted, fontSize = 13.sp)
+                        } else {
+                            Text("${if (f.home) "v" else "@"} ${f.opponent}", fontSize = 13.sp)
+                            FdrChip(f.difficulty)
+                            if (p.nextFixtures.size > 1) Text("+${p.nextFixtures.size - 1}", color = c.muted, fontSize = 12.sp)
+                        }
+                        if (p.rest.level != RestLevel.NA) RestChip(p)
                     }
                 }
                 AnimatedVisibility(open) { PlayerDetails(p, onFixMatch) }
@@ -496,7 +673,7 @@ private fun InvolvementChip(f: BreakMatch) {
         Involvement.STARTED -> "${f.minutes}'"
         Involvement.SUB -> "+${f.minutes}'"
         Involvement.BENCH -> "Bench"
-        Involvement.ABSENT -> "Out"
+        Involvement.ABSENT -> "Not selected" // called up, but not in this match's squad (e.g. Germany's split squad)
         Involvement.UPCOMING -> ""
     }
     val solid = f.involvement == Involvement.STARTED
@@ -533,6 +710,15 @@ private fun PlayerDetails(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
     val c = LocalStatusColors.current
     val uri = LocalUriHandler.current
     Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        p.live?.let { l ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LiveBadge("LIVE ${l.minute}")
+                Text(
+                    "${if (l.home) "v" else "@"} ${l.opponent}${l.score?.let { " · $it" }.orEmpty()} — ${onPitchLabel(l.onPitch)}",
+                    fontSize = 14.sp,
+                )
+            }
+        }
         SectionTitle("International matches")
         if (p.matches.isEmpty()) {
             Text("Didn't feature in any match during the break.", color = c.muted, fontSize = 13.sp)
@@ -550,10 +736,46 @@ private fun PlayerDetails(p: PlayerReport, onFixMatch: (PlayerReport) -> Unit) {
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     Text("${if (f.home) "v" else "@"} ${f.opponent}", modifier = Modifier.weight(1f), fontSize = 14.sp)
-                    Text("${fmtDay(f.date)} · ${f.competition}", color = c.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${fmtWhenAt(f.date)} · ${f.competition}", color = c.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
+
+        SectionTitle("Back to club")
+        p.nextFixtures.forEach { f ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, c.border, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("${if (f.home) "v" else "@"} ${f.opponent}", fontSize = 14.sp)
+                FdrChip(f.difficulty)
+                Spacer(Modifier.weight(1f))
+                Text(fmtWhenAt(f.kickoff), color = c.muted, fontSize = 12.sp)
+            }
+        }
+        if (p.rest.note.isNotEmpty()) {
+            Text(
+                p.rest.note,
+                fontSize = 13.sp,
+                color = when (p.rest.level) {
+                    RestLevel.TIGHT -> c.red
+                    RestLevel.WATCH -> c.amber
+                    else -> c.muted
+                },
+            )
+        }
+        val pr = p.price
+        val change = if (pr.changeThisGw != 0.0) " (${if (pr.changeThisGw > 0) "+" else ""}${"%.1f".format(pr.changeThisGw)} since the deadline)" else ""
+        val heavy = when {
+            pr.netTransfers <= -50_000 -> " (heavy transfers out)"
+            pr.netTransfers >= 100_000 -> " (heavy transfers in)"
+            else -> ""
+        }
+        Text("£${"%.1f".format(pr.now)}m$change · net transfers ${fmtThousands(pr.netTransfers)}$heavy", color = c.muted, fontSize = 12.sp)
 
         SectionTitle("Call-up sources")
         if (p.callUp.checks.isEmpty()) Text("No source could place this player.", color = c.muted, fontSize = 13.sp)

@@ -37,7 +37,7 @@ export interface BreakFixture {
 
 const YOUTH_OR_OTHER = /\bU\s?\d{2}\b|under\s?\d{2}|\(W\)|olympic/i;
 // A national-team spell FotMob closed around the break usually means the player left the squad.
-const LEFT_SQUAD_GRACE_MS = 3 * 24 * 3_600_000;
+const LEFT_SQUAD_GRACE_MS = 7 * 24 * 3_600_000;
 
 function seniorEntry(player: PlayerData): CareerEntry | undefined {
   const entries = player.careerHistory?.careerItems?.["national team"]?.teamEntries ?? [];

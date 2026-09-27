@@ -24,7 +24,7 @@ internal data class BreakFixture(
 private val YOUTH_OR_OTHER = Regex("\\bU\\s?\\d{2}\\b|under\\s?\\d{2}|\\(W\\)|olympic", RegexOption.IGNORE_CASE)
 
 // A national-team spell FotMob closed around the break usually means the player left the squad.
-private const val LEFT_SQUAD_GRACE_MS = 3 * DAY
+private const val LEFT_SQUAD_GRACE_MS = 7 * DAY
 
 private fun seniorEntry(player: PlayerData): CareerEntry? =
     player.careerHistory?.careerItems?.get("national team")?.teamEntries.orEmpty()

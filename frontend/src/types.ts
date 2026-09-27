@@ -59,6 +59,43 @@ export interface BreakMatch {
   score: string | null
   involvement: Involvement
   minutes: number | null
+  live: boolean
+}
+
+export interface NextFixture {
+  opponent: string
+  home: boolean
+  kickoff: string
+  difficulty: number
+}
+
+export interface Price {
+  now: number
+  changeThisGw: number
+  netTransfers: number
+}
+
+export type RestLevel = 'ok' | 'watch' | 'tight' | 'n/a'
+
+export interface Rest {
+  level: RestLevel
+  lastIntlMatch: string | null
+  clubKickoff: string | null
+  restDays: number | null
+  breakMinutes: number
+  longTrip: string | null
+  note: string
+}
+
+export type OnPitch = 'playing' | 'subbed_off' | 'bench' | 'not_in_squad' | 'unknown'
+
+export interface LiveMatch {
+  fotmobMatchId: number
+  opponent: string
+  home: boolean
+  minute: string
+  score: string | null
+  onPitch: OnPitch
 }
 
 export interface PlayerReport {
@@ -77,6 +114,10 @@ export interface PlayerReport {
   callUp: CallUp
   breakFixtures: BreakMatch[]
   matches: IntlMatch[]
+  nextFixtures: NextFixture[]
+  price: Price
+  rest: Rest
+  live: LiveMatch | null
   fpl: { status: string; news: string; newsAdded: string | null; chance: number | null }
   fotmobInjury: { name: string; expectedReturn: string | null; lastUpdated: string | null } | null
   signals: Signal[]
@@ -99,4 +140,34 @@ export interface TeamReport {
   generatedAt: string
   players: PlayerReport[]
   sources: DataSource[]
+}
+
+export interface LeagueOption {
+  id: number
+  name: string
+  rank: number | null
+}
+
+export interface RivalImpact {
+  entry: number
+  teamName: string
+  manager: string
+  rank: number
+  total: number
+  isYou: boolean
+  score: number
+  injured: number
+  watch: number
+  withdrew: number
+  tightRest: number
+  away: number
+  flagged: { name: string; reason: string; bench: boolean }[]
+  error?: string
+}
+
+export interface LeagueReport {
+  league: { id: number; name: string }
+  generatedAt: string
+  rivals: RivalImpact[]
+  limit: number
 }

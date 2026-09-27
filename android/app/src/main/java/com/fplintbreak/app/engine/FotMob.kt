@@ -127,10 +127,23 @@ internal data class Lineup(val homeTeam: LineupTeam? = null, val awayTeam: Lineu
 internal data class MatchContent(val matchFacts: MatchFacts? = null, val lineup: Lineup? = null)
 
 @Serializable
-internal data class MatchGeneral(val finished: Boolean = false)
+internal data class MatchGeneral(val finished: Boolean = false, val started: Boolean = false)
 
 @Serializable
-internal data class MatchDetails(val general: MatchGeneral = MatchGeneral(), val content: MatchContent = MatchContent())
+internal data class ShortLabel(val short: String? = null)
+
+@Serializable
+internal data class MatchStatus(val scoreStr: String? = null, val liveTime: ShortLabel? = null, val reason: ShortLabel? = null)
+
+@Serializable
+internal data class MatchHeader(val status: MatchStatus? = null)
+
+@Serializable
+internal data class MatchDetails(
+    val general: MatchGeneral = MatchGeneral(),
+    val header: MatchHeader? = null,
+    val content: MatchContent = MatchContent(),
+)
 
 @Serializable
 internal data class FixtureSide(val id: Int, val name: String, val score: Int? = null)
@@ -201,11 +214,14 @@ internal class FotMob(private val f: Fetcher) {
     suspend fun player(id: Long): PlayerData =
         lenientJson.decodeFromString(f.cached("fotmob_player_$id", 20 * MINUTE, "$BASE/playerData?id=$id"))
 
-    /** Finished matches never change, so cache them forever. */
+    /** Finished matches never change, so cache them forever; live ones are re-checked every minute. */
     suspend fun match(id: Long): MatchDetails {
         val body = f.cached(
             "fotmob_match_$id",
-            { b: String -> if (lenientJson.decodeFromString<MatchDetails>(b).general.finished) null else 10 * MINUTE },
+            { b: String ->
+                val g = lenientJson.decodeFromString<MatchDetails>(b).general
+                if (g.finished) null else if (g.started) MINUTE else 10 * MINUTE
+            },
             "$BASE/matchDetails?matchId=$id",
         )
         return lenientJson.decodeFromString(body)
