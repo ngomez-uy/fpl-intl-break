@@ -58,6 +58,20 @@ function saveLastTeam(id: string) {
   }
 }
 
+/** A summary chip the list can be filtered by. Each one matches a set of players. */
+export type ChipFilter = 'called' | 'withdrawn' | 'not_called' | Risk
+
+const matchesFilter = (p: PlayerReport, f: ChipFilter | null) => {
+  if (f === null) return true
+  if (f === 'called' || f === 'withdrawn') return p.callUp.status === f
+  if (f === 'not_called') return p.callUp.status === 'not_called' || p.callUp.status === 'unknown'
+  return p.risk === f
+}
+
+const POSITIONS = ['All', 'GKP', 'DEF', 'MID', 'FWD'] as const
+type PositionTab = (typeof POSITIONS)[number]
+const POSITION_LABEL: Record<PositionTab, string> = { All: 'All', GKP: 'GK', DEF: 'DEF', MID: 'MID', FWD: 'FWD' }
+
 /** Only players still with their squad have fixtures left that matter. */
 const isAway = (p: PlayerReport) => p.callUp.status === 'called'
 const upcoming = (p: PlayerReport) => p.breakFixtures.filter((f) => !f.finished && !f.live)
@@ -70,7 +84,8 @@ export default function App() {
   const [report, setReport] = useState<TeamReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [flaggedOnly, setFlaggedOnly] = useState(false)
+  const [filter, setFilter] = useState<ChipFilter | null>(null)
+  const [position, setPosition] = useState<PositionTab>('All')
   const [open, setOpen] = useState<Set<number>>(new Set())
   const [view, setView] = useState<'squad' | 'league'>('squad')
 
@@ -124,7 +139,8 @@ export default function App() {
     })
   }
 
-  const players = report?.players.filter((p) => !flaggedOnly || p.risk !== 'green') ?? []
+  const players =
+    report?.players.filter((p) => matchesFilter(p, filter) && (position === 'All' || p.position === position)) ?? []
   const starters = players.filter((p) => p.squadRole === 'starter')
   const bench = players.filter((p) => p.squadRole === 'bench')
 
@@ -169,12 +185,23 @@ export default function App() {
 
       {report && view === 'squad' && (
         <main>
-          <Summary report={report} />
+          <Summary report={report} filter={filter} onFilter={(f) => setFilter((cur) => (cur === f ? null : f))} />
 
-          <label className="toggle">
-            <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} />
-            Only show flagged players
-          </label>
+          <nav className="position-tabs" aria-label="Filter by position">
+            {POSITIONS.map((pos) => {
+              const n = report.players.filter((p) => matchesFilter(p, filter) && (pos === 'All' || p.position === pos)).length
+              return (
+                <button key={pos} className={position === pos ? 'active' : ''} onClick={() => setPosition(pos)}>
+                  {POSITION_LABEL[pos]} <span className="muted">{n}</span>
+                </button>
+              )
+            })}
+            {filter && (
+              <button className="clear-filter" onClick={() => setFilter(null)}>
+                Clear filter ✕
+              </button>
+            )}
+          </nav>
 
           <div className="squad">
             <div className="row head" aria-hidden>
@@ -200,7 +227,7 @@ export default function App() {
                 </Fragment>
               ),
             )}
-            {players.length === 0 && <p className="muted empty">No flagged players. Enjoy the break.</p>}
+            {players.length === 0 && <p className="muted empty">No players match this filter.</p>}
           </div>
 
           <Sources sources={report.sources} generatedAt={report.generatedAt} />
@@ -215,7 +242,15 @@ export default function App() {
   )
 }
 
-function Summary({ report }: { report: TeamReport }) {
+function Summary({
+  report,
+  filter,
+  onFilter,
+}: {
+  report: TeamReport
+  filter: ChipFilter | null
+  onFilter: (f: ChipFilter) => void
+}) {
   const ps = report.players
   const called = ps.filter((p) => p.callUp.status === 'called').length
   const withdrew = ps.filter((p) => p.callUp.status === 'withdrawn').length
@@ -261,14 +296,14 @@ function Summary({ report }: { report: TeamReport }) {
       <div className="stat-groups">
         <div className="stats">
           <span className="stats-label">Call-ups</span>
-          <Stat n={called} label="With national team" />
-          <Stat n={withdrew} label="Withdrew" tone={withdrew ? 'amber' : undefined} />
-          <Stat n={notCalled} label="Not called up" />
+          <Stat n={called} label="With national team" id="called" filter={filter} onFilter={onFilter} />
+          <Stat n={withdrew} label="Withdrew" tone={withdrew ? 'amber' : undefined} id="withdrawn" filter={filter} onFilter={onFilter} />
+          <Stat n={notCalled} label="Not called up" id="not_called" filter={filter} onFilter={onFilter} />
         </div>
         <div className="stats">
           <span className="stats-label">Fitness</span>
           {risks.map(([risk, n]) => (
-            <Stat key={risk} n={n} label={RISK_LABEL[risk]} tone={n ? risk : undefined} />
+            <Stat key={risk} n={n} label={RISK_LABEL[risk]} tone={n ? risk : undefined} id={risk} filter={filter} onFilter={onFilter} />
           ))}
         </div>
       </div>
@@ -338,11 +373,32 @@ function Sources({ sources, generatedAt }: { sources: DataSource[]; generatedAt:
   )
 }
 
-function Stat({ n, label, tone }: { n: number; label: string; tone?: Risk }) {
+function Stat({
+  n,
+  label,
+  tone,
+  id,
+  filter,
+  onFilter,
+}: {
+  n: number
+  label: string
+  tone?: Risk
+  id: ChipFilter
+  filter: ChipFilter | null
+  onFilter: (f: ChipFilter) => void
+}) {
+  const active = filter === id
   return (
-    <span className={`stat${tone ? ` tone-${tone}` : ''}`}>
+    <button
+      className={`stat${tone ? ` tone-${tone}` : ''}${active ? ' active' : ''}`}
+      aria-pressed={active}
+      disabled={n === 0 && !active}
+      onClick={() => onFilter(id)}
+      title={active ? 'Show everyone' : `Show only: ${label.toLowerCase()}`}
+    >
       <strong>{n}</strong> {label}
-    </span>
+    </button>
   )
 }
 

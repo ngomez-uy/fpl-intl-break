@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.FilterChip
 import com.fplintbreak.app.data.OnPitch
 import com.fplintbreak.app.data.RestLevel
 import java.time.LocalDate
@@ -157,10 +159,27 @@ private fun riskColor(r: Risk): Color {
     }
 }
 
+/** A summary chip the list can be filtered by. Each one matches a set of players. */
+enum class ChipFilter { CALLED, WITHDRAWN, NOT_CALLED, RED, AMBER, GREEN }
+
+private fun PlayerReport.matches(f: ChipFilter?) = when (f) {
+    null -> true
+    ChipFilter.CALLED -> callUp.status == CallUpStatus.CALLED
+    ChipFilter.WITHDRAWN -> callUp.status == CallUpStatus.WITHDRAWN
+    ChipFilter.NOT_CALLED -> callUp.status == CallUpStatus.NOT_CALLED || callUp.status == CallUpStatus.UNKNOWN
+    ChipFilter.RED -> risk == Risk.RED
+    ChipFilter.AMBER -> risk == Risk.AMBER
+    ChipFilter.GREEN -> risk == Risk.GREEN
+}
+
+private val POSITIONS = listOf("All" to null, "GK" to "GKP", "DEF" to "DEF", "MID" to "MID", "FWD" to "FWD")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BreakScreen(vm: BreakViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    var filter by rememberSaveable { mutableStateOf<ChipFilter?>(null) }
+    var position by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -202,7 +221,14 @@ fun BreakScreen(vm: BreakViewModel = viewModel()) {
                 state.report?.let { r ->
                     item { ViewTabs(state.view, vm::showView) }
                     when (state.view) {
-                        View.SQUAD -> report(r, vm::openMatchFix)
+                        View.SQUAD -> report(
+                            r,
+                            filter,
+                            position,
+                            onFilter = { f -> filter = if (filter == f) null else f },
+                            onPosition = { position = it },
+                            onFixMatch = vm::openMatchFix,
+                        )
                         View.LEAGUE -> item {
                             LeagueSection(state.league, vm::selectLeague, vm::selectLimit, vm::compareLeague)
                         }
@@ -337,9 +363,21 @@ private fun ErrorBox(message: String) {
     )
 }
 
-private fun LazyListScope.report(report: TeamReport, onFixMatch: (PlayerReport) -> Unit) {
-    item { Summary(report) }
-    val (bench, starters) = report.players.partition { it.isBench }
+private fun LazyListScope.report(
+    report: TeamReport,
+    filter: ChipFilter?,
+    position: String?,
+    onFilter: (ChipFilter) -> Unit,
+    onPosition: (String?) -> Unit,
+    onFixMatch: (PlayerReport) -> Unit,
+) {
+    item { Summary(report, filter, onFilter) }
+    item { PositionTabs(report, filter, position, onPosition, onClear = { filter?.let(onFilter) }) }
+    val shown = report.players.filter { it.matches(filter) && (position == null || it.position == position) }
+    if (shown.isEmpty()) {
+        item { Text("No players match this filter.", color = LocalStatusColors.current.muted, modifier = Modifier.padding(8.dp)) }
+    }
+    val (bench, starters) = shown.partition { it.isBench }
     listOf("Starting XI" to starters, "Bench" to bench).forEach { (label, group) ->
         if (group.isEmpty()) return@forEach
         item(key = "label-$label") { GroupLabel(label) }
@@ -359,7 +397,25 @@ private fun LazyListScope.report(report: TeamReport, onFixMatch: (PlayerReport) 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Summary(report: TeamReport) {
+private fun PositionTabs(report: TeamReport, filter: ChipFilter?, position: String?, onPosition: (String?) -> Unit, onClear: () -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+    ) {
+        POSITIONS.forEach { (label, code) ->
+            val n = report.players.count { it.matches(filter) && (code == null || it.position == code) }
+            FilterChip(selected = position == code, onClick = { onPosition(code) }, label = { Text("$label  $n") })
+        }
+        if (filter != null) {
+            TextButton(onClick = onClear) { Text("Clear filter ✕") }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Summary(report: TeamReport, filter: ChipFilter?, onFilter: (ChipFilter) -> Unit) {
     val c = LocalStatusColors.current
     val ps = report.players
     val away = ps.filter { it.isAway }
@@ -403,9 +459,16 @@ private fun Summary(report: TeamReport) {
         StatsLabel("Call-ups")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val withdrew = ps.count { it.callUp.status == CallUpStatus.WITHDRAWN }
-            Stat(away.size, "With national team")
-            Stat(withdrew, "Withdrew", if (withdrew > 0) c.amber to c.amberBg else null)
-            Stat(ps.count { it.callUp.status == CallUpStatus.NOT_CALLED || it.callUp.status == CallUpStatus.UNKNOWN }, "Not called up")
+            Stat(away.size, "With national team", null, filter == ChipFilter.CALLED) { onFilter(ChipFilter.CALLED) }
+            Stat(withdrew, "Withdrew", if (withdrew > 0) c.amber to c.amberBg else null, filter == ChipFilter.WITHDRAWN) {
+                onFilter(ChipFilter.WITHDRAWN)
+            }
+            Stat(
+                ps.count { it.callUp.status == CallUpStatus.NOT_CALLED || it.callUp.status == CallUpStatus.UNKNOWN },
+                "Not called up",
+                null,
+                filter == ChipFilter.NOT_CALLED,
+            ) { onFilter(ChipFilter.NOT_CALLED) }
         }
         StatsLabel("Fitness")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -416,7 +479,8 @@ private fun Summary(report: TeamReport) {
                     Risk.AMBER -> c.amber to c.amberBg
                     Risk.GREEN -> c.green to c.greenBg
                 }
-                Stat(n, riskLabel(r), if (n > 0) tone else null)
+                val f = ChipFilter.valueOf(r.name)
+                Stat(n, riskLabel(r), if (n > 0) tone else null, filter == f) { onFilter(f) }
             }
         }
         // Not a count: these players are a subset of the ones away, so name them instead.
@@ -501,13 +565,20 @@ private fun RestChip(p: PlayerReport) {
 }
 
 @Composable
-private fun Stat(n: Int, label: String, tone: Pair<Color, Color>? = null) {
+private fun Stat(n: Int, label: String, tone: Pair<Color, Color>?, selected: Boolean, onClick: () -> Unit) {
     val c = LocalStatusColors.current
     val (fg, bg) = tone ?: (MaterialTheme.colorScheme.onSurface to MaterialTheme.colorScheme.surface)
+    val shape = RoundedCornerShape(50)
     Row(
         Modifier
-            .background(bg, RoundedCornerShape(50))
-            .then(if (tone == null) Modifier.border(1.dp, c.border, RoundedCornerShape(50)) else Modifier)
+            .clip(shape)
+            .background(bg, shape)
+            .border(
+                if (selected) 2.dp else 1.dp,
+                if (selected) MaterialTheme.colorScheme.primary else if (tone == null) c.border else Color.Transparent,
+                shape,
+            )
+            .clickable(enabled = n > 0 || selected, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Text("$n ", fontWeight = FontWeight.Bold, color = fg, fontSize = 13.sp)
