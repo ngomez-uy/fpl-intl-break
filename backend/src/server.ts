@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { buildReport } from "./analyze.js";
+import { headToHead } from "./h2h.js";
 import { leagueReport, teamLeagues } from "./league.js";
 
 const app = express();
@@ -58,6 +59,18 @@ app.get("/api/league/:id/break", async (req, res) => {
   } catch (err) {
     const message = (err as Error).message;
     res.status(/-> 404/.test(message) ? 404 : 502).json({ error: /-> 404/.test(message) ? `League ${id} not found` : message });
+  }
+});
+
+// GET /api/team/:id/h2h — squad players' record against their next Premier League opponent
+app.get("/api/team/:id/h2h", async (req, res) => {
+  const id = positiveInt(req.params.id);
+  if (!id) return void res.status(400).json({ error: "Team ID must be a positive number" });
+  try {
+    res.json(await headToHead(id));
+  } catch (err) {
+    const message = (err as Error).message;
+    res.status(/-> 404/.test(message) ? 404 : 502).json({ error: /-> 404/.test(message) ? `FPL team ${id} not found` : message });
   }
 });
 

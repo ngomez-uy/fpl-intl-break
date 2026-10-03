@@ -9,6 +9,7 @@ import com.fplintbreak.app.data.FotmobLink
 import com.fplintbreak.app.data.IntlMatch
 import com.fplintbreak.app.data.Involvement
 import com.fplintbreak.app.data.FlaggedPlayer
+import com.fplintbreak.app.data.H2HReport
 import com.fplintbreak.app.data.LeagueOption
 import com.fplintbreak.app.data.LeagueReport
 import com.fplintbreak.app.data.LiveMatch
@@ -104,6 +105,12 @@ class ReportBuilder(cacheDir: File, private val overrides: Overrides) {
         Fpl(Fetcher(http, cache, DataAges())).entry(teamId).leagues?.classic.orEmpty()
             .filter { it.leagueType == "x" }
             .map { LeagueOption(it.id, it.name) }
+    }
+
+    /** Squad players' Premier League record against their next opponent. */
+    suspend fun headToHead(teamId: Int): H2HReport = wrapErrors(teamId) {
+        val f = Fetcher(http, cache, DataAges())
+        HeadToHead(Fpl(f), f).build(teamId)
     }
 
     /** Mini-league break impact: which rivals the break hit hardest. Port of backend/src/league.ts. */

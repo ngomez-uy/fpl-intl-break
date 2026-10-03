@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent } from 'react'
+import { HeadToHead } from './HeadToHead'
 import { League } from './League'
 import type { BreakMatch, CallUpStatus, DataSource, IntlMatch, NextFixture, PlayerReport, Risk, TeamReport } from './types'
 
@@ -87,7 +88,7 @@ export default function App() {
   const [filter, setFilter] = useState<ChipFilter | null>(null)
   const [position, setPosition] = useState<PositionTab>('All')
   const [open, setOpen] = useState<Set<number>>(new Set())
-  const [view, setView] = useState<'squad' | 'league'>('squad')
+  const [view, setView] = useState<'squad' | 'league' | 'h2h'>('squad')
 
   /** `quiet` refreshes keep the page as it is (open rows, last good report) — used while matches are live. */
   async function load(id: string, quiet = false) {
@@ -178,10 +179,14 @@ export default function App() {
           <button className={view === 'league' ? 'active' : ''} onClick={() => setView('league')}>
             Mini-league
           </button>
+          <button className={view === 'h2h' ? 'active' : ''} onClick={() => setView('h2h')}>
+            vs next rival
+          </button>
         </nav>
       )}
 
       {report && view === 'league' && <League teamId={report.team.id} />}
+      {report && view === 'h2h' && <HeadToHead key={report.team.id} teamId={report.team.id} />}
 
       {report && view === 'squad' && (
         <main>

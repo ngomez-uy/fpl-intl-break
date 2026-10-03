@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fplintbreak.app.data.Settings
 import com.fplintbreak.app.data.TeamReport
+import com.fplintbreak.app.data.H2HReport
 import com.fplintbreak.app.data.LeagueOption
 import com.fplintbreak.app.data.LeagueReport
 import com.fplintbreak.app.data.PlayerCandidate
@@ -35,7 +36,9 @@ data class MatchFix(
     val error: String? = null,
 )
 
-enum class View { SQUAD, LEAGUE }
+enum class View { SQUAD, LEAGUE, H2H }
+
+data class H2HUiState(val loading: Boolean = false, val report: H2HReport? = null, val error: String? = null)
 
 data class LeagueUiState(
     val options: List<LeagueOption>? = null,
@@ -53,6 +56,7 @@ data class BreakUiState(
     val matchFix: MatchFix? = null,
     val view: View = View.SQUAD,
     val league: LeagueUiState = LeagueUiState(),
+    val h2h: H2HUiState = H2HUiState(),
 )
 
 class BreakViewModel(app: Application) : AndroidViewModel(app) {
@@ -89,6 +93,21 @@ class BreakViewModel(app: Application) : AndroidViewModel(app) {
     fun showView(view: View) {
         _state.update { it.copy(view = view) }
         if (view == View.LEAGUE && _state.value.league.options == null) loadLeagues()
+        if (view == View.H2H && _state.value.h2h.report == null) loadHeadToHead()
+    }
+
+    fun loadHeadToHead() {
+        val teamId = _state.value.report?.team?.id ?: return
+        if (_state.value.h2h.loading) return
+        _state.update { it.copy(h2h = H2HUiState(loading = true)) }
+        viewModelScope.launch {
+            try {
+                val report = builder.headToHead(teamId)
+                _state.update { it.copy(h2h = H2HUiState(report = report)) }
+            } catch (e: ReportException) {
+                _state.update { it.copy(h2h = H2HUiState(error = e.message)) }
+            }
+        }
     }
 
     private fun loadLeagues() {
@@ -188,6 +207,7 @@ class BreakViewModel(app: Application) : AndroidViewModel(app) {
                         loading = false,
                         report = report,
                         league = if (newTeam) LeagueUiState() else it.league,
+                        h2h = if (newTeam) H2HUiState() else it.h2h,
                     )
                 }
                 scheduleLiveRefresh(report)

@@ -187,6 +187,71 @@ data class RivalImpact(
     val error: String? = null,
 )
 
+data class H2HMatch(
+    val kickoff: String,
+    val home: Boolean,
+    val result: String, // "W 2-1", from the player's side
+    val minutes: Int,
+    val goals: Int,
+    val assists: Int,
+    val points: Int,
+)
+
+enum class H2HStatus {
+    PLAYED,
+    NO_PLAYER, // not in the Premier League
+    NO_OPPONENT, // opponent not in the Premier League
+    OWN_CLUB, // played for the opponent
+    NOT_MET, // the clubs haven't played each other (yet)
+    UNAVAILABLE, // archive fetch failed
+}
+
+data class H2HSeason(
+    val season: String, // "2025/26"
+    val status: H2HStatus,
+    val club: String?, // the player's club that season (short name)
+    val apps: Int = 0,
+    val minutes: Int = 0,
+    val goals: Int = 0,
+    val assists: Int = 0,
+    val points: Int = 0,
+    val matches: List<H2HMatch> = emptyList(),
+)
+
+/** One of your squad players in a matchup: their record against this opponent. */
+data class H2HPlayer(
+    val id: Int,
+    val name: String,
+    val position: String,
+    val club: String,
+    val bench: Boolean,
+    val seasons: List<H2HSeason>, // newest first
+) {
+    val apps get() = seasons.sumOf { it.apps }
+    val goals get() = seasons.sumOf { it.goals }
+    val assists get() = seasons.sumOf { it.assists }
+    val points get() = seasons.sumOf { it.points }
+}
+
+data class Meeting(val season: String, val kickoff: String, val home: String, val away: String, val homeGoals: Int, val awayGoals: Int)
+
+/** A current player's goals and assists for their club in the last meetings. */
+data class Contributor(val name: String, val goals: Int, val assists: Int, val mine: Boolean)
+
+data class MatchupSide(val name: String, val short: String, val top: List<Contributor>)
+
+data class Matchup(
+    val kickoff: String?,
+    val home: MatchupSide,
+    val away: MatchupSide,
+    val meetings: List<Meeting>, // newest first
+    val players: List<H2HPlayer>,
+)
+
+data class BlankPlayer(val id: Int, val name: String, val club: String)
+
+data class H2HReport(val event: Int, val firstSeason: String, val matchups: List<Matchup>, val blanks: List<BlankPlayer>)
+
 data class LeagueReport(val leagueName: String, val generatedAt: String, val rivals: List<RivalImpact>, val limit: Int)
 
 @Serializable

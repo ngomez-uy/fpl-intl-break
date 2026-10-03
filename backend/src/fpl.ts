@@ -5,6 +5,7 @@ const BASE = "https://fantasy.premierleague.com/api";
 
 export interface FplElement {
   id: number;
+  code: number; // stable across seasons, unlike id
   first_name: string;
   second_name: string;
   web_name: string;
@@ -23,6 +24,7 @@ export interface FplElement {
 
 export interface FplTeam {
   id: number;
+  code: number; // stable across seasons, unlike id
   name: string;
   short_name: string;
 }
@@ -49,6 +51,10 @@ export interface FplFixture {
   team_a: number;
   team_h_difficulty: number;
   team_a_difficulty: number;
+  finished?: boolean;
+  team_h_score?: number | null;
+  team_a_score?: number | null;
+  stats?: { identifier: string; h: { element: number; value: number }[]; a: { element: number; value: number }[] }[];
 }
 
 export interface FplEntry {

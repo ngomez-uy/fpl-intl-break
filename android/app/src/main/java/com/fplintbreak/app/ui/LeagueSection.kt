@@ -3,6 +3,7 @@ package com.fplintbreak.app.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +53,7 @@ fun LeagueSection(
         Text("Who did the break hit hardest?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(
             "Checks the top teams in one of your mini-leagues for injuries, withdrawals and short rest before the " +
-                "next gameweek. Starters count double.",
+                "next gameweek. Tap a column to sort.",
             color = c.muted,
             fontSize = 13.sp,
         )
@@ -117,14 +118,73 @@ fun LeagueSection(
         val report = state.report
         if (report != null && !state.loading) {
             Text(report.leagueName, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-            report.rivals.forEachIndexed { i, r -> RivalRow(i + 1, r) }
+            var sortKey by remember { mutableStateOf(SortKey.INJURED) }
+            var desc by remember { mutableStateOf(true) }
+            SortHeader(sortKey, desc) { key ->
+                if (key == sortKey) desc = !desc else {
+                    sortKey = key
+                    desc = key != SortKey.RANK
+                }
+            }
+            sortRivals(report.rivals, sortKey, desc).forEach { RivalRow(it) }
         }
     }
 }
 
+private enum class SortKey(val label: String) { INJURED("Inj"), WITHDREW("Out"), RANK("League rank") }
+
+private fun RivalImpact.count(key: SortKey) = when (key) {
+    SortKey.INJURED -> injured
+    SortKey.WITHDREW -> withdrew
+    SortKey.RANK -> rank
+}
+
+// Counts sort worst-first, league rank best-first; ties fall back to the other count, then rank.
+private fun sortRivals(rivals: List<RivalImpact>, key: SortKey, desc: Boolean): List<RivalImpact> {
+    val other = if (key == SortKey.INJURED) SortKey.WITHDREW else SortKey.INJURED
+    val primary = compareBy<RivalImpact> { it.error != null }
+        .then(if (desc) compareByDescending { it.count(key) } else compareBy { it.count(key) })
+    val ties = if (key == SortKey.RANK) primary else primary.thenByDescending { it.count(other) }.thenBy { it.rank }
+    return rivals.sortedWith(ties)
+}
+
+private val CountWidth = 44.dp
+
+@Composable
+private fun SortHeader(key: SortKey, desc: Boolean, onSort: (SortKey) -> Unit) {
+    val c = LocalStatusColors.current
+    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        SortKey.entries.forEach { k ->
+            val active = k == key
+            Text(
+                k.label.uppercase() + if (active) (if (desc) " ▼" else " ▲") else "",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (active) MaterialTheme.colorScheme.onSurface else c.muted,
+                modifier = Modifier
+                    .then(if (k == SortKey.RANK) Modifier.padding(start = 4.dp) else Modifier.width(CountWidth))
+                    .clickable { onSort(k) }
+                    .padding(vertical = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CountCell(value: Int?) {
+    val c = LocalStatusColors.current
+    Text(
+        value?.toString() ?: "–",
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = if (value != null && value > 0) MaterialTheme.colorScheme.onSurface else c.muted,
+        modifier = Modifier.width(CountWidth),
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RivalRow(position: Int, r: RivalImpact) {
+private fun RivalRow(r: RivalImpact) {
     val c = LocalStatusColors.current
     Surface(
         color = if (r.isYou) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
@@ -133,7 +193,8 @@ private fun RivalRow(position: Int, r: RivalImpact) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("$position", fontWeight = FontWeight.Bold, color = c.muted, modifier = Modifier.width(24.dp))
+            CountCell(if (r.error == null) r.injured else null)
+            CountCell(if (r.error == null) r.withdrew else null)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(r.teamName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -167,10 +228,6 @@ private fun RivalRow(position: Int, r: RivalImpact) {
                         }
                     }
                 }
-            }
-            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                Text(if (r.score % 1.0 == 0.0) "${r.score.toInt()}" else "${r.score}", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("${r.injured} inj · ${r.withdrew} out · ${r.tightRest} tired", color = c.muted, fontSize = 11.sp)
             }
         }
     }

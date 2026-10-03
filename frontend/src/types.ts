@@ -171,3 +171,80 @@ export interface LeagueReport {
   rivals: RivalImpact[]
   limit: number
 }
+
+export interface H2HMatch {
+  kickoff: string
+  home: boolean
+  result: string
+  minutes: number
+  goals: number
+  assists: number
+  points: number
+}
+
+export interface H2HSeason {
+  season: string
+  status: 'played' | 'no-player' | 'no-opponent' | 'own-club' | 'not-met' | 'unavailable'
+  club: string | null
+  apps: number
+  minutes: number
+  goals: number
+  assists: number
+  points: number
+  matches: H2HMatch[]
+}
+
+export interface H2HTotals {
+  apps: number
+  goals: number
+  assists: number
+  points: number
+}
+
+export interface H2HPlayer {
+  id: number
+  name: string
+  position: string
+  club: string
+  bench: boolean
+  total: H2HTotals
+  seasons: H2HSeason[]
+}
+
+export interface Meeting {
+  season: string
+  kickoff: string
+  home: string
+  away: string
+  homeGoals: number
+  awayGoals: number
+}
+
+export interface Contributor {
+  name: string
+  goals: number
+  assists: number
+  mine: boolean
+}
+
+export interface MatchupSide {
+  name: string
+  short: string
+  top: Contributor[]
+}
+
+export interface Matchup {
+  kickoff: string | null
+  home: MatchupSide
+  away: MatchupSide
+  meetings: Meeting[]
+  players: H2HPlayer[]
+}
+
+export interface H2HReport {
+  event: number
+  seasons: string[]
+  matchups: Matchup[]
+  blanks: { id: number; name: string; club: string }[]
+  generatedAt: string
+}

@@ -10,6 +10,7 @@ import java.time.Instant
 @Serializable
 internal data class FplElement(
     val id: Int,
+    val code: Int = 0, // stable across seasons, unlike id
     @SerialName("first_name") val firstName: String,
     @SerialName("second_name") val secondName: String,
     @SerialName("web_name") val webName: String,
@@ -27,7 +28,15 @@ internal data class FplElement(
 )
 
 @Serializable
-internal data class FplTeam(val id: Int, val name: String, @SerialName("short_name") val shortName: String)
+internal data class FplTeam(
+    val id: Int,
+    val name: String,
+    @SerialName("short_name") val shortName: String,
+    val code: Int = 0, // stable across seasons, unlike id
+)
+
+@Serializable
+internal data class FplEvent(val id: Int, @SerialName("deadline_time") val deadlineTime: String, val finished: Boolean = false)
 
 @Serializable
 internal data class ElementType(val id: Int, @SerialName("singular_name_short") val singularNameShort: String)
@@ -37,6 +46,7 @@ internal data class Bootstrap(
     val elements: List<FplElement>,
     val teams: List<FplTeam>,
     @SerialName("element_types") val elementTypes: List<ElementType>,
+    val events: List<FplEvent> = emptyList(),
 )
 
 @Serializable
@@ -48,7 +58,17 @@ internal data class FplFixture(
     @SerialName("team_a") val teamA: Int = 0,
     @SerialName("team_h_difficulty") val teamHDifficulty: Int = 3,
     @SerialName("team_a_difficulty") val teamADifficulty: Int = 3,
+    val finished: Boolean = false,
+    @SerialName("team_h_score") val teamHScore: Int? = null,
+    @SerialName("team_a_score") val teamAScore: Int? = null,
+    val stats: List<FixtureStat> = emptyList(),
 )
+
+@Serializable
+internal data class FixtureStat(val identifier: String, val h: List<StatCredit> = emptyList(), val a: List<StatCredit> = emptyList())
+
+@Serializable
+internal data class StatCredit(val element: Int, val value: Int)
 
 @Serializable
 internal data class FplEntry(
@@ -113,6 +133,9 @@ internal class Fpl(private val f: Fetcher) {
 
     suspend fun picks(id: Int, event: Int): FplPicks =
         lenientJson.decodeFromString(f.cached("fpl_picks_${id}_$event", 15 * MINUTE, "$BASE/entry/$id/event/$event/picks/"))
+
+    // A player's match-by-match history this season; changes after every match they play.
+    suspend fun elementSummary(id: Int): String = f.cached("fpl_summary_$id", HOUR, "$BASE/element-summary/$id/")
 
     // Rivals' ranks only move at gameweek end, so an hour is plenty.
     suspend fun league(id: Int): LeagueStandings =

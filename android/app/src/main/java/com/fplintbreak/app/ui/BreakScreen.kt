@@ -232,6 +232,7 @@ fun BreakScreen(vm: BreakViewModel = viewModel()) {
                         View.LEAGUE -> item {
                             LeagueSection(state.league, vm::selectLeague, vm::selectLimit, vm::compareLeague)
                         }
+                        View.H2H -> headToHead(state.h2h, vm::loadHeadToHead)
                     }
                 }
             }
@@ -323,6 +324,7 @@ private fun ViewTabs(current: View, onSelect: (View) -> Unit) {
     ) {
         Tab(selected = current == View.SQUAD, onClick = { onSelect(View.SQUAD) }, text = { Text("My squad") })
         Tab(selected = current == View.LEAGUE, onClick = { onSelect(View.LEAGUE) }, text = { Text("Mini-league") })
+        Tab(selected = current == View.H2H, onClick = { onSelect(View.H2H) }, text = { Text("vs next rival") })
     }
 }
 
